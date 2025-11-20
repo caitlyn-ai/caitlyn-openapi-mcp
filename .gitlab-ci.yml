@@ -1,0 +1,131 @@
+stages:
+  - lint
+  - test
+  - build
+  - deploy
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  DOCKER_IMAGE: "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
+  DOCKER_IMAGE_LATEST: "$CI_REGISTRY_IMAGE:latest"
+
+cache:
+  paths:
+    - .cache/pip
+    - .venv/
+
+# Lint stage
+lint:black:
+  stage: lint
+  image: python:3.11-slim
+  before_script:
+    - pip install black
+  script:
+    - black --check src tests
+  only:
+    - merge_requests
+    - main
+
+lint:ruff:
+  stage: lint
+  image: python:3.11-slim
+  before_script:
+    - pip install ruff
+  script:
+    - ruff check src tests
+  only:
+    - merge_requests
+    - main
+
+lint:pyright:
+  stage: lint
+  image: python:3.11-slim
+  before_script:
+    - pip install pyright
+    - pip install -e .
+  script:
+    - pyright
+  only:
+    - merge_requests
+    - main
+  allow_failure: true
+
+# Test stage
+test:unit:
+  stage: test
+  image: python:3.11-slim
+  before_script:
+    - pip install --upgrade pip
+    - pip install -e ".[dev]"
+  script:
+    - pytest --cov=src --cov-report=xml --cov-report=term-missing
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+    paths:
+      - htmlcov/
+    expire_in: 1 week
+  only:
+    - merge_requests
+    - main
+
+# Build stage
+build:docker:
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - docker build -t $DOCKER_IMAGE -t $DOCKER_IMAGE_LATEST .
+    - docker push $DOCKER_IMAGE
+    - docker push $DOCKER_IMAGE_LATEST
+  only:
+    - main
+    - tags
+
+build:package:
+  stage: build
+  image: python:3.11-slim
+  before_script:
+    - pip install --upgrade pip build
+  script:
+    - python -m build
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 week
+  only:
+    - tags
+
+# Deploy stage (example - customize for your deployment)
+deploy:staging:
+  stage: deploy
+  image: alpine:latest
+  script:
+    - echo "Deploy to staging environment"
+    # Add your deployment commands here
+    # For example, using kubectl, helm, or deployment scripts
+  environment:
+    name: staging
+    url: https://staging.example.com
+  only:
+    - main
+  when: manual
+
+deploy:production:
+  stage: deploy
+  image: alpine:latest
+  script:
+    - echo "Deploy to production environment"
+    # Add your deployment commands here
+  environment:
+    name: production
+    url: https://production.example.com
+  only:
+    - tags
+  when: manual

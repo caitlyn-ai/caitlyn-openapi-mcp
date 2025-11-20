@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  # For local development with stdio
+  openapi-mcp-dev:
+    build: .
+    container_name: caitlyn-openapi-mcp-dev
+    environment:
+      - OPENAPI_SPEC_URL=${OPENAPI_SPEC_URL}
+      - DOCS_RENDERER=${DOCS_RENDERER:-scalar}
+      - DOCS_BASE_URL=${DOCS_BASE_URL}
+      - MCP_TRANSPORT=stdio
+    restart: unless-stopped
+
+  # For Bedrock AgentCore deployment with streamable-http
+  openapi-mcp-bedrock:
+    build: .
+    container_name: caitlyn-openapi-mcp-bedrock
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAPI_SPEC_URL=${OPENAPI_SPEC_URL}
+      - DOCS_RENDERER=${DOCS_RENDERER:-scalar}
+      - DOCS_BASE_URL=${DOCS_BASE_URL}
+      - MCP_TRANSPORT=streamable-http
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
