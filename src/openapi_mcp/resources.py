@@ -17,7 +17,7 @@ def register_resources(mcp: FastMCP, *, index: OpenApiIndex) -> None:
         index: Parsed OpenAPI index with documentation links
     """
 
-    @mcp.resource("api-specification")
+    @mcp.resource("openapi://api-specification")
     def get_full_api_spec() -> str:
         """
         The complete OpenAPI 3.x specification in JSON format.

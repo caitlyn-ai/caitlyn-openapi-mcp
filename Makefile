@@ -1,9 +1,10 @@
-.PHONY: help install install-dev test test-cov lint format type-check clean build docker-build docker-run
+.PHONY: help install install-dev dev test test-cov lint format type-check clean build docker-build docker-run
 
 help:
 	@echo "Available commands:"
 	@echo "  make install       - Install package dependencies"
 	@echo "  make install-dev   - Install package with dev dependencies"
+	@echo "  make dev           - Run MCP Inspector for local development"
 	@echo "  make test          - Run tests"
 	@echo "  make test-cov      - Run tests with coverage"
 	@echo "  make lint          - Run linting (ruff)"
@@ -19,6 +20,13 @@ install:
 
 install-dev:
 	pip install -e ".[dev]"
+
+dev:
+	@echo "Starting MCP Inspector for local development..."
+	npx @modelcontextprotocol/inspector \
+		-e OPENAPI_SPEC_URL="https://betty.getcaitlyn.ai/docs/openapi-v1.json" \
+		-e DOCS_BASE_URL="https://betty.getcaitlyn.ai/api/docs" \
+		python -m openapi_mcp.server
 
 test:
 	pytest
