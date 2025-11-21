@@ -11,6 +11,7 @@ from prance import ResolvingParser
 from prance.util.url import ResolutionError
 
 from .model import Endpoint, OpenApiIndex
+from .vector_search import VectorSearchIndex
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +173,7 @@ def load_openapi_spec_from_url(spec_url: str) -> OpenApiIndex:
     schemas: dict[str, dict[str, Any]] = dict(components.get("schemas") or {})
     security_schemes: dict[str, dict[str, Any]] = dict(components.get("securitySchemes") or {})
 
+    # Vector index will be initialized lazily on first search to avoid blocking server startup
     return OpenApiIndex(
         spec=spec,
         raw=resolved,
@@ -181,4 +183,5 @@ def load_openapi_spec_from_url(spec_url: str) -> OpenApiIndex:
         spec_url=spec_url,
         schema_docs_urls={},
         security_scheme_docs_urls={},
+        vector_index=None,  # Lazy initialization
     )

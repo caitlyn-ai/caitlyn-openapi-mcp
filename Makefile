@@ -26,7 +26,7 @@ dev:
 	npx @modelcontextprotocol/inspector \
 		-e OPENAPI_SPEC_URL="https://betty.getcaitlyn.ai/docs/openapi-v1.json" \
 		-e DOCS_BASE_URL="https://betty.getcaitlyn.ai/api/docs" \
-		python -m openapi_mcp.server
+		-- python -m openapi_mcp.server
 
 test:
 	pytest

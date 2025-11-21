@@ -134,6 +134,27 @@ def register_tools(mcp: FastMCP, *, index: OpenApiIndex) -> None:
         Returns:
             Matching endpoints with path, method, summary, description, and docs_url
         """
+        # Try vector search first if available
+        # Lazy initialization happens here on first search
+        index.ensure_vector_index()
+
+        if index.vector_index is not None:
+            vector_results = index.vector_index.search(query, top_k=max_results)
+            return [
+                {
+                    "path": ep.path,
+                    "method": ep.method,
+                    "summary": ep.summary or "",
+                    "description": ep.description or "",
+                    "operation_id": ep.operation_id or "",
+                    "tags": ep.tags,
+                    "docs_url": ep.docs_url,
+                    "relevance_score": round(score, 3),
+                }
+                for ep, score in vector_results
+            ]
+
+        # Fallback to substring search if vector search unavailable
         needle = query.lower()
         matches: list[dict[str, Any]] = []
 
