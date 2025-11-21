@@ -137,86 +137,86 @@ def load_openapi_spec_from_url(spec_url: str) -> OpenApiIndex:
         endpoints: list[Endpoint] = []
 
         # Extract all operations
-        # Try using Spec object first, fallback to raw dict if that fails
-        try:
-            # Test if spec has paths attribute by accessing it
-            _ = spec.paths
-            operations_iter = _iter_operations(spec)
-        except (AttributeError, Exception) as e:
-            logger.warning(f"Spec object missing expected attributes, using raw dict fallback: {e}")
-            # Try to extract directly from the raw dict if Spec object is broken
-            operations_iter = _iter_operations_from_dict(resolved)
+    # Try using Spec object first, fallback to raw dict if that fails
+    try:
+        # Test if spec has paths attribute by accessing it
+        _ = spec.paths
+        operations_iter = _iter_operations(spec)
+    except (AttributeError, Exception) as e:
+        logger.warning(f"Spec object missing expected attributes, using raw dict fallback: {e}")
+        # Try to extract directly from the raw dict if Spec object is broken
+        operations_iter = _iter_operations_from_dict(resolved)
 
-        for path_name, method, operation in operations_iter:
-            # Handle both Spec operation objects and raw dicts
-            if isinstance(operation, dict):
-                op_raw = operation
-            else:
-                op_raw = getattr(operation, "_operation", operation)  # type: ignore[attr-defined]
-                if not isinstance(op_raw, dict):
-                    op_raw = {}
+    for path_name, method, operation in operations_iter:
+        # Handle both Spec operation objects and raw dicts
+        if isinstance(operation, dict):
+            op_raw = operation
+        else:
+            op_raw = getattr(operation, "_operation", operation)  # type: ignore[attr-defined]
+            if not isinstance(op_raw, dict):
+                op_raw = {}
 
-            summary = op_raw.get("summary")
-            description = op_raw.get("description")
-            operation_id = op_raw.get("operationId")
-            tags = list(op_raw.get("tags") or [])
+        summary = op_raw.get("summary")
+        description = op_raw.get("description")
+        operation_id = op_raw.get("operationId")
+        tags = list(op_raw.get("tags") or [])
 
-            # Extract parameters
-            parameters: list[dict[str, Any]] = []
-            if isinstance(operation, dict):
-                # Raw dict mode
-                params_list = op_raw.get("parameters", [])
-                if isinstance(params_list, list):
-                    parameters = [dict(p) if isinstance(p, dict) else {} for p in params_list]
-            else:
-                # Spec object mode
-                for param in operation.parameters:
-                    param_raw = getattr(param, "_parameter", None)
-                    if isinstance(param_raw, dict):
-                        parameters.append(dict(param_raw))
+        # Extract parameters
+        parameters: list[dict[str, Any]] = []
+        if isinstance(operation, dict):
+            # Raw dict mode
+            params_list = op_raw.get("parameters", [])
+            if isinstance(params_list, list):
+                parameters = [dict(p) if isinstance(p, dict) else {} for p in params_list]
+        else:
+            # Spec object mode
+            for param in operation.parameters:
+                param_raw = getattr(param, "_parameter", None)
+                if isinstance(param_raw, dict):
+                    parameters.append(dict(param_raw))
 
-            # Extract request body
-            request_body_raw: dict[str, Any] | None = None
-            if isinstance(operation, dict):
-                # Raw dict mode
-                rb = op_raw.get("requestBody")
-                if isinstance(rb, dict):
-                    request_body_raw = dict(rb)
-            else:
-                # Spec object mode
-                if operation.request_body is not None:
-                    rb_raw = getattr(operation.request_body, "_request_body", None)
-                    if isinstance(rb_raw, dict):
-                        request_body_raw = dict(rb_raw)
+        # Extract request body
+        request_body_raw: dict[str, Any] | None = None
+        if isinstance(operation, dict):
+            # Raw dict mode
+            rb = op_raw.get("requestBody")
+            if isinstance(rb, dict):
+                request_body_raw = dict(rb)
+        else:
+            # Spec object mode
+            if operation.request_body is not None:
+                rb_raw = getattr(operation.request_body, "_request_body", None)
+                if isinstance(rb_raw, dict):
+                    request_body_raw = dict(rb_raw)
 
-            # Extract responses
-            responses_raw: dict[str, Any] = {}
-            if isinstance(operation, dict):
-                # Raw dict mode
-                responses = op_raw.get("responses", {})
-                if isinstance(responses, dict):
-                    responses_raw = {str(k): dict(v) if isinstance(v, dict) else {} for k, v in responses.items()}
-            else:
-                # Spec object mode
-                for status_code, response in operation.responses.items():
-                    resp_raw = getattr(response, "_response", None)
-                    if isinstance(resp_raw, dict):
-                        responses_raw[str(status_code)] = dict(resp_raw)
+        # Extract responses
+        responses_raw: dict[str, Any] = {}
+        if isinstance(operation, dict):
+            # Raw dict mode
+            responses = op_raw.get("responses", {})
+            if isinstance(responses, dict):
+                responses_raw = {str(k): dict(v) if isinstance(v, dict) else {} for k, v in responses.items()}
+        else:
+            # Spec object mode
+            for status_code, response in operation.responses.items():
+                resp_raw = getattr(response, "_response", None)
+                if isinstance(resp_raw, dict):
+                    responses_raw[str(status_code)] = dict(resp_raw)
 
-            endpoints.append(
-                Endpoint(
-                    path=path_name,
-                    method=method,
-                    summary=summary,
-                    description=description,
-                    operation_id=operation_id,
-                    tags=tags,
-                    parameters=parameters,
-                    request_body=request_body_raw,
-                    responses=responses_raw,
-                    docs_url=None,  # filled in by docs_links.py later
-                )
+        endpoints.append(
+            Endpoint(
+                path=path_name,
+                method=method,
+                summary=summary,
+                description=description,
+                operation_id=operation_id,
+                tags=tags,
+                parameters=parameters,
+                request_body=request_body_raw,
+                responses=responses_raw,
+                docs_url=None,  # filled in by docs_links.py later
             )
+        )
 
         # Extract components
         components: dict[str, Any] = resolved.get("components") or {}

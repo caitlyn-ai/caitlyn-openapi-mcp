@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from mcp.server.fastmcp import FastMCP
 
-from .model import OpenApiIndex
+if TYPE_CHECKING:
+    from .server import IndexLoader
 
 
-def register_resources(mcp: FastMCP, *, index: OpenApiIndex) -> None:
+def register_resources(mcp: FastMCP, *, index_loader: "IndexLoader") -> None:
     """
     Register MCP resources for the OpenAPI specification.
 
@@ -14,7 +17,7 @@ def register_resources(mcp: FastMCP, *, index: OpenApiIndex) -> None:
 
     Args:
         mcp: FastMCP server instance
-        index: Parsed OpenAPI index with documentation links
+        index_loader: Index loader that provides access to the parsed OpenAPI index
     """
 
     @mcp.resource("openapi://api-specification")
@@ -26,4 +29,5 @@ def register_resources(mcp: FastMCP, *, index: OpenApiIndex) -> None:
         """
         import json
 
+        index = index_loader.get_index()
         return json.dumps(index.raw, indent=2)

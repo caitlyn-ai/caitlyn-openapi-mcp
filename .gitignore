@@ -97,6 +97,7 @@ celerybeat.pid
 
 # Environments
 .env
+!.env.example
 .venv
 env/
 venv/
@@ -140,3 +141,6 @@ pyrightconfig.json
 .pytest_cache/
 .tox/
 htmlcov/
+
+# Sentence Transformers Model Cache
+models/

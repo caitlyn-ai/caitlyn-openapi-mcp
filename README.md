@@ -6,6 +6,7 @@ MCP server that exposes OpenAPI specifications as queryable documentation resour
 
 - **URL-based OpenAPI spec loading**: Load specs from any URL, not just local files
 - **$ref resolution**: Automatically resolves all `$ref` references (including remote refs) using Prance
+- **Semantic search**: Vector-based endpoint search using sentence-transformers for better query understanding
 - **Scalar deep links**: Every endpoint, schema, and security scheme includes a `docs_url` pointing to Scalar documentation
 - **MCP resources**: Expose spec structure for introspection
 - **MCP tools**: Search and query endpoints, schemas, and security schemes
@@ -64,6 +65,35 @@ The server is configured via environment variables:
 - `MCP_TRANSPORT`: Transport mode (default: `"stdio"`)
   - `"stdio"`: For local development and Claude Desktop (default)
   - `"streamable-http"`: For AWS Bedrock AgentCore deployment
+
+### OpenTelemetry (Optional)
+
+For observability in production environments:
+
+**General OTEL Configuration:**
+- `ENABLE_TELEMETRY`: Enable/disable telemetry (default: `"true"`)
+- `OTEL_SERVICE_NAME`: Service name for tracing (default: `"caitlyn-openapi-mcp"`)
+- `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLP endpoint for traces (e.g., `"http://localhost:4317"`)
+
+**AWS Bedrock AgentCore (ADOT):**
+
+The Docker image includes AWS Distro for OpenTelemetry (ADOT) for native AgentCore integration. When deployed to AgentCore, traces are automatically exported to CloudWatch.
+
+Pre-configured environment variables (already set in Dockerfile):
+- `OTEL_PYTHON_DISTRO=aws_distro`
+- `OTEL_PYTHON_CONFIGURATOR=aws_configurator`
+- `OTEL_TRACES_EXPORTER=otlp`
+- `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`
+
+Additional variables for non-AgentCore hosted deployment:
+- `AWS_DEFAULT_REGION`, `AWS_REGION`: AWS region
+- `AWS_ACCOUNT_ID`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`: AWS credentials
+- `AGENT_OBSERVABILITY_ENABLED=true`: Enable AgentCore observability
+
+**Instrumented operations:**
+- OpenAPI spec loading
+- Vector search index initialization (model loading, embedding generation, cache operations)
+- Semantic search queries (with result counts)
 
 ## Client Configuration
 
@@ -142,41 +172,31 @@ See [Testing with MCP Inspector](#testing-with-mcp-inspector) for more details.
 
 ### 4. AWS Bedrock AgentCore
 
-Deploy as a containerized service with streamable-http transport.
+Deploy as a containerized service with streamable-http transport and AWS Distro for OpenTelemetry (ADOT) for native observability.
 
-**docker-compose.yml:**
+**Features:**
+- 🚀 **Fast cold-starts** - Embedding cache for ~10x faster initialization
+- 📊 **ADOT integration** - Native CloudWatch tracing via `opentelemetry-instrument`
+- 🔒 **Secure** - Non-root user, multi-stage builds, updated pip (CVE-2025-8869 fixed)
+- 📦 **Production-ready** - Pre-bundled model cache, health checks
 
-```yaml
-version: "3.8"
+**Quick start:**
 
-services:
-  openapi-mcp:
-    image: python:3.11-slim
-    working_dir: /app
-    command: sh -c "pip install caitlyn-openapi-mcp && caitlyn-openapi-mcp"
-    ports:
-      - "8000:8000"
-    environment:
-      - OPENAPI_SPEC_URL=https://api.example.com/openapi.json
-      - DOCS_BASE_URL=https://api.example.com/docs
-      - MCP_TRANSPORT=streamable-http
-```
+1. Copy `.env.example` to `.env` and configure:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your OPENAPI_SPEC_URL and AWS credentials
+   ```
 
-**Dockerfile:**
+2. Run with docker-compose:
+   ```bash
+   docker-compose up openapi-mcp-bedrock
+   ```
 
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-RUN pip install --no-cache-dir caitlyn-openapi-mcp
-
-ENV OPENAPI_SPEC_URL=https://api.example.com/openapi.json
-ENV DOCS_BASE_URL=https://api.example.com/docs
-ENV MCP_TRANSPORT=streamable-http
-
-CMD ["caitlyn-openapi-mcp"]
-```
+**See full examples:**
+- [Dockerfile](Dockerfile) - Multi-stage build with ADOT auto-instrumentation
+- [docker-compose.yml](docker-compose.yml) - Complete service definitions
+- [.env.example](.env.example) - All configuration options
 
 **Build and run:**
 
@@ -381,6 +401,35 @@ git clone https://github.com/caitlyn-ai/caitlyn-openapi-mcp.git
 cd caitlyn-openapi-mcp
 pip install -e ".[dev]"
 ```
+
+The installation automatically downloads the sentence-transformers model (~80MB) to `./models/` for semantic search.
+
+**Startup behavior:**
+
+- **Server starts instantly** (~100-200ms) - No blocking on spec or model loading
+- **Background loading**: OpenAPI spec and ML model load in parallel background threads
+- **First request handling**:
+  - If spec/model still loading, request waits for completion
+  - Typically completes before first request (spec: ~1-2s cached, model: ~1-2s cached)
+- **Semantic search ready in ~1-2 seconds** (cached) or ~5-10 seconds (first time)
+  - **Spec cache**: Resolved OpenAPI spec cached to disk (~instant subsequent loads)
+  - **Embedding cache**: Pre-computed embeddings cached per-API-spec (~instant loads)
+  - **First load of new API**: Downloads spec + generates embeddings (~5-10s)
+  - **Subsequent loads**: Loads from cache (~1-2s total) ✨ **~5-10x faster**
+
+**Caching strategy:**
+
+- **OpenAPI specs**: Cached in `./models/cache/spec_*.pkl` (per-URL hash, gitignored)
+- **Model files**: Cached in `./models/` directory (gitignored)
+- **Embeddings**: Cached in `./models/cache/embeddings_*.pkl` (per-content hash, gitignored)
+- **First-time setup**: ~30 seconds to download model + fetch spec + generate embeddings
+- **Cold-start (cached)**: ~1-2 seconds to load everything from cache 🚀
+- **Cache invalidation**: Automatic when API spec content or URL changes
+- **Manual management**:
+  - Download/update model: `make setup-models`
+  - Clear all caches: `make clean-models`
+
+**Note:** Docker builds pre-download the model during image build, so containers start instantly with model already cached in memory.
 
 ### Testing with MCP Inspector
 

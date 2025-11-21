@@ -1,16 +1,19 @@
-.PHONY: help install install-dev dev test test-cov lint format type-check clean build docker-build docker-run
+.PHONY: help install install-dev setup-models dev dev-stop test test-cov lint format type-check clean clean-models build docker-build docker-run
 
 help:
 	@echo "Available commands:"
 	@echo "  make install       - Install package dependencies"
 	@echo "  make install-dev   - Install package with dev dependencies"
+	@echo "  make setup-models  - Download sentence-transformers model to local cache"
 	@echo "  make dev           - Run MCP Inspector for local development"
+	@echo "  make dev-stop      - Stop MCP Inspector and release port 6277"
 	@echo "  make test          - Run tests"
 	@echo "  make test-cov      - Run tests with coverage"
 	@echo "  make lint          - Run linting (ruff)"
 	@echo "  make format        - Format code (black)"
 	@echo "  make type-check    - Run type checking (pyright)"
 	@echo "  make clean         - Clean build artifacts"
+	@echo "  make clean-models  - Remove cached sentence-transformers models"
 	@echo "  make build         - Build package"
 	@echo "  make docker-build  - Build Docker image"
 	@echo "  make docker-run    - Run Docker container"
@@ -20,13 +23,26 @@ install:
 
 install-dev:
 	pip install -e ".[dev]"
+	@$(MAKE) setup-models
+
+setup-models:
+	@echo "Downloading sentence-transformers model to ./models/..."
+	@mkdir -p models
+	@SENTENCE_TRANSFORMERS_HOME=./models python scripts/download_model.py
 
 dev:
 	@echo "Starting MCP Inspector for local development..."
 	npx @modelcontextprotocol/inspector \
 		-e OPENAPI_SPEC_URL="https://betty.getcaitlyn.ai/docs/openapi-v1.json" \
 		-e DOCS_BASE_URL="https://betty.getcaitlyn.ai/api/docs" \
+		-e SENTENCE_TRANSFORMERS_HOME="$(shell pwd)/models" \
 		-- python -m openapi_mcp.server
+
+dev-stop:
+	@echo "Stopping MCP Inspector and server..."
+	@pkill -f "@modelcontextprotocol/inspector" 2>/dev/null || true
+	@pkill -f "python.*openapi_mcp.server" 2>/dev/null || true
+	@echo "✓ Stopped MCP Inspector processes"
 
 test:
 	pytest
@@ -53,6 +69,10 @@ clean:
 	rm -rf htmlcov/
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
+
+clean-models:
+	@echo "Removing cached sentence-transformers models..."
+	rm -rf models/
 
 build: clean
 	python -m build

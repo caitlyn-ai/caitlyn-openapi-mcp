@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mcp.server.fastmcp import FastMCP
 
-from .model import OpenApiIndex
+if TYPE_CHECKING:
+    from .server import IndexLoader
 
 
-def register_tools(mcp: FastMCP, *, index: OpenApiIndex) -> None:
+def register_tools(mcp: FastMCP, *, index_loader: "IndexLoader") -> None:
     """
     Register MCP tools for exploring and understanding the API.
 
@@ -18,7 +19,7 @@ def register_tools(mcp: FastMCP, *, index: OpenApiIndex) -> None:
 
     Args:
         mcp: FastMCP server instance
-        index: Parsed OpenAPI index with documentation links
+        index_loader: Index loader that provides access to the parsed OpenAPI index
     """
 
     @mcp.tool()
@@ -36,6 +37,7 @@ def register_tools(mcp: FastMCP, *, index: OpenApiIndex) -> None:
         Returns:
             List of endpoints with path, method, summary, description, tags, and docs_url
         """
+        index = index_loader.get_index()
         results: list[dict[str, Any]] = []
         needle = search.lower() if search else None
 
@@ -85,6 +87,7 @@ def register_tools(mcp: FastMCP, *, index: OpenApiIndex) -> None:
         Returns:
             Complete endpoint details including parameters, request body schema, response schemas, and docs_url, or None if not found
         """
+        index = index_loader.get_index()
         method_upper = method.upper()
         for ep in index.endpoints:
             if ep.method == method_upper and ep.path == path:
@@ -113,6 +116,7 @@ def register_tools(mcp: FastMCP, *, index: OpenApiIndex) -> None:
         Returns:
             Schema definition with properties, types, required fields, and docs_url, or None if not found
         """
+        index = index_loader.get_index()
         schema = index.schemas.get(schema_name)
         if schema is None:
             return None
@@ -134,6 +138,7 @@ def register_tools(mcp: FastMCP, *, index: OpenApiIndex) -> None:
         Returns:
             Matching endpoints with path, method, summary, description, and docs_url
         """
+        index = index_loader.get_index()
         # Try vector search first if available
         # Lazy initialization happens here on first search
         index.ensure_vector_index()
@@ -195,6 +200,7 @@ def register_tools(mcp: FastMCP, *, index: OpenApiIndex) -> None:
         Returns:
             List of tags with endpoint counts
         """
+        index = index_loader.get_index()
         tag_counts: dict[str, int] = {}
 
         for ep in index.endpoints:

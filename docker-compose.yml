@@ -19,10 +19,21 @@ services:
     ports:
       - "8000:8000"
     environment:
+      # MCP Configuration
       - OPENAPI_SPEC_URL=${OPENAPI_SPEC_URL}
       - DOCS_RENDERER=${DOCS_RENDERER:-scalar}
       - DOCS_BASE_URL=${DOCS_BASE_URL}
       - MCP_TRANSPORT=streamable-http
+      # OpenTelemetry (ADOT pre-configured in Dockerfile)
+      - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-caitlyn-openapi-mcp}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
+      # AWS Credentials (for non-AgentCore hosted deployments)
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
+      - AWS_REGION=${AWS_REGION}
+      - AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AGENT_OBSERVABILITY_ENABLED=${AGENT_OBSERVABILITY_ENABLED:-true}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
