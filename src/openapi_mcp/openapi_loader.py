@@ -3,17 +3,14 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 from openapi_core import Spec
-from openapi_core.spec.operations import SpecOperation
-from openapi_core.spec.paths import SpecPathItem
 from prance import ResolvingParser
 
 from .model import Endpoint, OpenApiIndex
 
 
-def _iter_operations(spec: Spec) -> Iterable[tuple[str, str, SpecOperation]]:
+def _iter_operations(spec: Spec) -> Iterable[tuple[str, str, Any]]:
     """Iterate over all operations in the spec."""
     for path_name, path_item in spec.paths.items():
-        assert isinstance(path_item, SpecPathItem)
         for method_name, op in path_item.operations.items():
             yield path_name, method_name.upper(), op
 
