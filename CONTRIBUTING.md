@@ -28,6 +28,21 @@ cp .env.example .env
 
 ## Development Workflow
 
+### Interactive Testing
+
+The recommended development workflow uses MCP Inspector with telemetry:
+
+```bash
+# Start dev environment (OTEL + Jaeger + Inspector)
+make dev
+
+# Test the server interactively in the web UI
+# View telemetry at http://localhost:16686
+
+# Stop when done
+make dev-stop
+```
+
 ### Running Tests
 
 ```bash
@@ -42,6 +57,17 @@ pytest tests/test_config.py
 
 # Run tests matching a pattern
 pytest -k test_load_config
+```
+
+### Testing Telemetry
+
+```bash
+# Test OTEL integration
+make otel-up
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 python scripts/test_telemetry.py
+
+# View results in Jaeger
+open http://localhost:16686
 ```
 
 ### Code Quality
@@ -64,6 +90,21 @@ make format && make lint && make type-check && make test
 
 ### Running the Server Locally
 
+**For development with MCP Inspector and telemetry (recommended):**
+
+```bash
+# Start everything: OTEL Collector + Jaeger + MCP Inspector
+make dev
+
+# View telemetry in Jaeger UI
+open http://localhost:16686
+
+# Stop everything
+make dev-stop
+```
+
+**For direct execution:**
+
 ```bash
 # Set required environment variables
 export OPENAPI_SPEC_URL="https://api.example.com/openapi.json"
@@ -72,6 +113,21 @@ export DOCS_BASE_URL="https://api.example.com/docs"
 # Run the server
 python -m openapi_mcp.server
 ```
+
+**OTEL Collector commands:**
+
+```bash
+# Start OTEL collector standalone
+make otel-up
+
+# View collector logs
+make otel-logs
+
+# Stop collector
+make otel-down
+```
+
+See [TELEMETRY.md](docs/TELEMETRY.md) for complete telemetry documentation.
 
 ### Docker Development
 
@@ -119,16 +175,25 @@ git checkout -b feature/your-feature-name
    - Add tests for new functionality
    - Update documentation as needed
 
-3. **Run quality checks**
+3. **Test your changes**
+
+```bash
+# Test interactively with MCP Inspector
+make dev
+
+# Run unit tests
+make test-cov
+```
+
+4. **Run quality checks**
 
 ```bash
 make format
 make lint
 make type-check
-make test-cov
 ```
 
-4. **Commit your changes**
+5. **Commit your changes**
 
 ```bash
 git add .
@@ -143,7 +208,7 @@ Use conventional commit messages:
 - `refactor:` for code refactoring
 - `chore:` for maintenance tasks
 
-5. **Push and create a pull request**
+6. **Push and create a pull request**
 
 ```bash
 git push origin feature/your-feature-name

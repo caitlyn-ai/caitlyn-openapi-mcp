@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from .server import IndexLoader
 
 
-def register_resources(mcp: FastMCP, *, index_loader: "IndexLoader") -> None:
+def register_resources(mcp: FastMCP, *, index_loader: IndexLoader) -> None:
     """
     Register MCP resources for the OpenAPI specification.
 

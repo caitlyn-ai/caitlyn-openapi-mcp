@@ -2,18 +2,72 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+from collections.abc import Sequence
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any
 
 from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter, SpanExportResult
 
 logger = logging.getLogger(__name__)
+
+
+class FileSpanExporter(SpanExporter):
+    """Export spans to a JSON file for debugging."""
+
+    def __init__(self, file_path: str | Path):
+        self.file_path = Path(file_path)
+        self.file_path.parent.mkdir(parents=True, exist_ok=True)
+        # Clear file on initialization
+        with open(self.file_path, "w") as f:
+            f.write("[\n")
+        self._first_span = True
+
+    def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
+        """Export spans to file."""
+        try:
+            with open(self.file_path, "a") as f:
+                for span in spans:
+                    # Calculate duration if both times are available
+                    duration_ms = None
+                    if span.start_time is not None and span.end_time is not None:
+                        duration_ms = (span.end_time - span.start_time) / 1_000_000  # ns to ms
+
+                    span_data = {
+                        "name": span.name,
+                        "start_time": span.start_time,
+                        "end_time": span.end_time,
+                        "duration_ms": duration_ms,
+                        "attributes": dict(span.attributes) if span.attributes else {},
+                    }
+                    if not self._first_span:
+                        f.write(",\n")
+                    else:
+                        self._first_span = False
+                    json.dump(span_data, f, indent=2)
+            return SpanExportResult.SUCCESS
+        except Exception as e:
+            logger.error(f"Failed to export spans to file: {e}")
+            return SpanExportResult.FAILURE
+
+    def shutdown(self) -> None:
+        """Close the file."""
+        try:
+            with open(self.file_path, "a") as f:
+                f.write("\n]\n")
+        except Exception:
+            pass
+
 
 # Global tracer instance
 _tracer: trace.Tracer | None = None
@@ -21,11 +75,12 @@ _tracer: trace.Tracer | None = None
 
 def setup_telemetry(service_name: str = "caitlyn-openapi-mcp") -> None:
     """
-    Initialize OpenTelemetry tracing.
+    Initialize OpenTelemetry tracing and logging.
 
     Configured via environment variables:
     - OTEL_EXPORTER_OTLP_ENDPOINT: OTLP endpoint (default: http://localhost:4317)
     - OTEL_SERVICE_NAME: Service name (default: caitlyn-openapi-mcp)
+    - OTEL_FILE_EXPORT: Path to export spans as JSON (default: ./mcp-spans.json)
     - ENABLE_TELEMETRY: Enable/disable telemetry (default: true)
     """
     global _tracer
@@ -53,16 +108,32 @@ def setup_telemetry(service_name: str = "caitlyn-openapi-mcp") -> None:
             otlp_exporter = OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
             provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
             logger.info(f"✓ OpenTelemetry configured with OTLP endpoint: {otlp_endpoint}")
-        else:
-            # No exporter configured - traces will be collected but not exported
-            # (Console exporter is not compatible with MCP stdio transport)
-            logger.info("✓ OpenTelemetry initialized (no OTLP endpoint configured)")
+
+        # Add file exporter if configured (useful for debugging)
+        file_export_path = os.environ.get("OTEL_FILE_EXPORT", os.path.join(os.getcwd(), "mcp-spans.json"))
+        file_exporter = FileSpanExporter(file_export_path)
+        provider.add_span_processor(BatchSpanProcessor(file_exporter))
+        logger.info(f"✓ OpenTelemetry file export enabled: {file_export_path}")
 
         # Set global tracer provider
         trace.set_tracer_provider(provider)
 
         # Get tracer instance
         _tracer = trace.get_tracer(__name__)
+
+        # Set up logging integration
+        logger_provider = LoggerProvider(resource=resource)
+
+        if otlp_endpoint:
+            # Add OTLP log exporter to send logs to the same endpoint as traces
+            otlp_log_exporter = OTLPLogExporter(endpoint=otlp_endpoint, insecure=True)
+            logger_provider.add_log_record_processor(BatchLogRecordProcessor(otlp_log_exporter))
+            logger.info(f"✓ OpenTelemetry logging configured with OTLP endpoint: {otlp_endpoint}")
+
+        # Add OTEL logging handler to root logger to capture all log messages
+        handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)
+        logging.getLogger().addHandler(handler)
+        logger.info("✓ OpenTelemetry logging integration enabled")
 
     except Exception as e:
         logger.warning(f"Failed to initialize OpenTelemetry: {e}. Telemetry will be disabled.")

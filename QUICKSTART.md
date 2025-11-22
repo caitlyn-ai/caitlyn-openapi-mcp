@@ -41,12 +41,22 @@ export DOCS_BASE_URL="https://api.example.com/docs"
 ### 4. Run the server
 
 ```bash
-# Run directly
+# For development with MCP Inspector + OTEL telemetry
+make dev
+
+# Or run directly (production mode)
 caitlyn-openapi-mcp
 
 # Or using Python module
 python -m openapi_mcp.server
 ```
+
+The `make dev` command starts:
+- **OTEL Collector** - Captures traces and logs
+- **Jaeger UI** - Visualize telemetry at http://localhost:16686
+- **MCP Inspector** - Interactive testing UI
+
+See [TELEMETRY.md](docs/TELEMETRY.md) for details on observability.
 
 ## Docker Quick Start
 
@@ -86,7 +96,27 @@ make docker-stop
 
 ## Testing Your Setup
 
-### Run tests
+### Interactive Testing with MCP Inspector
+
+The recommended way to test during development:
+
+```bash
+# Start MCP Inspector with OTEL observability
+make dev
+
+# This starts:
+# - OTEL Collector on localhost:4317
+# - Jaeger UI on http://localhost:16686
+# - MCP Inspector web interface
+
+# View telemetry data
+open http://localhost:16686
+
+# Stop everything
+make dev-stop
+```
+
+### Run Unit Tests
 
 ```bash
 # Run all tests
@@ -94,6 +124,19 @@ make test
 
 # Run with coverage
 make test-cov
+```
+
+### Test Telemetry Integration
+
+```bash
+# Start OTEL collector first
+make otel-up
+
+# Run telemetry test
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 python scripts/test_telemetry.py
+
+# View results in Jaeger
+open http://localhost:16686
 ```
 
 ### Example OpenAPI Specs
@@ -124,8 +167,10 @@ Check that the server is working:
 ## Next Steps
 
 - Read the [README.md](README.md) for detailed documentation
+- Check [TELEMETRY.md](docs/TELEMETRY.md) for observability setup
 - Check [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines
 - Explore the MCP resources and tools available
+- Test with the MCP Inspector at http://localhost:6277 (when running `make dev`)
 
 ## Common Issues
 

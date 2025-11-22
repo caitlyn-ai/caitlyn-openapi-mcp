@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from .server import IndexLoader
 
 
-def register_tools(mcp: FastMCP, *, index_loader: "IndexLoader") -> None:
+def register_tools(mcp: FastMCP, *, index_loader: IndexLoader) -> None:
     """
     Register MCP tools for exploring and understanding the API.
 

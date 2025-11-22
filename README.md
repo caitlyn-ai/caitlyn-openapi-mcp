@@ -68,7 +68,19 @@ The server is configured via environment variables:
 
 ### OpenTelemetry (Optional)
 
-For observability in production environments:
+For observability in production environments. **See [TELEMETRY.md](docs/TELEMETRY.md) for complete documentation including local development setup with Jaeger.**
+
+**Local Development:**
+
+The `make dev` command automatically starts an OTEL Collector with Jaeger UI for visualizing traces:
+
+```bash
+# Start dev environment with OTEL collector + Jaeger
+make dev
+
+# View traces and logs in Jaeger UI
+open http://localhost:16686
+```
 
 **General OTEL Configuration:**
 - `ENABLE_TELEMETRY`: Enable/disable telemetry (default: `"true"`)
@@ -91,9 +103,11 @@ Additional variables for non-AgentCore hosted deployment:
 - `AGENT_OBSERVABILITY_ENABLED=true`: Enable AgentCore observability
 
 **Instrumented operations:**
-- OpenAPI spec loading
-- Vector search index initialization (model loading, embedding generation, cache operations)
-- Semantic search queries (with result counts)
+- OpenAPI spec loading (with granular cache/fetch/parse/extract spans)
+- Vector search (model loading, embedding generation, cache operations)
+- Semantic search queries (encoding, similarity computation, ranking)
+- MCP protocol (list_tools, list_resources, call_tool)
+- All Python logging is captured as OTEL log records
 
 ## Client Configuration
 
@@ -433,9 +447,11 @@ The installation automatically downloads the sentence-transformers model (~80MB)
 
 ### Testing with MCP Inspector
 
-The [MCP Inspector](https://github.com/modelcontextprotocol/inspector) provides a web-based UI for testing your MCP server locally.
+The [MCP Inspector](https://github.com/modelcontextprotocol/inspector) provides a web-based UI for testing your MCP server locally with full observability.
 
-**Prerequisites**: Node.js installed (npx comes with Node.js)
+**Prerequisites**:
+- Node.js installed (npx comes with Node.js)
+- Docker for OTEL Collector (optional but recommended)
 
 **Quick start with Make:**
 
@@ -443,12 +459,25 @@ The [MCP Inspector](https://github.com/modelcontextprotocol/inspector) provides 
 make dev
 ```
 
-This launches the inspector with the Caitlyn API. The inspector will open a web interface where you can:
+This launches:
+- **OTEL Collector** - Receives telemetry on localhost:4317
+- **Jaeger UI** - Visualize traces at http://localhost:16686
+- **MCP Inspector** - Interactive testing interface
+
+The inspector will open a web interface where you can:
 
 - Test all MCP tools interactively
 - View resources and their contents
 - Inspect endpoint details, schemas, and security schemes
+- Monitor performance with OpenTelemetry traces
 - Validate the server behavior before deployment
+
+**View telemetry data:**
+
+```bash
+# Jaeger UI for traces and logs
+open http://localhost:16686
+```
 
 **Manual usage with custom API:**
 
@@ -456,8 +485,11 @@ This launches the inspector with the Caitlyn API. The inspector will open a web 
 npx @modelcontextprotocol/inspector \
   -e OPENAPI_SPEC_URL="https://api.example.com/openapi.json" \
   -e DOCS_BASE_URL="https://api.example.com/docs" \
+  -e OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317" \
   python -m openapi_mcp.server
 ```
+
+For complete telemetry documentation, see [TELEMETRY.md](docs/TELEMETRY.md).
 
 ### Running Tests
 

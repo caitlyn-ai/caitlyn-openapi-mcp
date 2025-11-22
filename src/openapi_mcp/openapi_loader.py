@@ -5,8 +5,9 @@ import json
 import logging
 import os
 import pickle
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 from urllib.request import urlopen
 
 import yaml
@@ -16,15 +17,14 @@ from prance.util.url import ResolutionError
 
 from .model import Endpoint, OpenApiIndex
 from .telemetry import trace_operation
-from .vector_search import VectorSearchIndex
 
 logger = logging.getLogger(__name__)
 
 
 def _iter_operations(spec: Spec) -> Iterable[tuple[str, str, Any]]:
     """Iterate over all operations in the spec."""
-    for path_name, path_item in spec.paths.items():
-        for method_name, op in path_item.operations.items():
+    for path_name, path_item in spec.paths.items():  # type: ignore[attr-defined]
+        for method_name, op in path_item.operations.items():  # type: ignore[attr-defined]
             yield path_name, method_name.upper(), op
 
 
@@ -54,7 +54,7 @@ def _load_spec_from_cache(cache_path: Path) -> dict[str, Any] | None:
     try:
         with open(cache_path, "rb") as f:
             cached = pickle.load(f)
-        logger.info(f"✓ Loaded OpenAPI spec from cache (fast startup)")
+        logger.info("✓ Loaded OpenAPI spec from cache (fast startup)")
         return cached
     except Exception as e:
         logger.warning(f"Failed to load spec cache: {e}")
@@ -82,10 +82,13 @@ def load_openapi_spec_from_url(spec_url: str) -> OpenApiIndex:
     Returns:
         OpenApiIndex with parsed spec, endpoints, schemas, and security schemes
     """
-    with trace_operation("openapi.load_spec", {"spec_url": spec_url}):
+    with trace_operation("openapi.load_spec_full", {"spec_url": spec_url}):
         # Check cache first
-        cache_path = _get_spec_cache_path(spec_url)
-        cached_spec = _load_spec_from_cache(cache_path)
+        with trace_operation("openapi.check_cache", {"spec_url": spec_url}) as cache_span:
+            cache_path = _get_spec_cache_path(spec_url)
+            cached_spec = _load_spec_from_cache(cache_path)
+            if cache_span:
+                cache_span.set_attribute("cache_hit", cached_spec is not None)
 
         if cached_spec is not None:
             resolved = cached_spec
@@ -93,135 +96,146 @@ def load_openapi_spec_from_url(spec_url: str) -> OpenApiIndex:
             # Try to resolve all $refs (including remote refs)
             # If that fails due to broken refs, fall back to using spec without resolution
             try:
-                logger.info(f"Fetching OpenAPI spec from {spec_url}...")
-                parser = ResolvingParser(spec_url, backend="openapi-spec-validator", strict=False)
-                resolved: dict[str, Any] = parser.specification
-                logger.info(f"Successfully loaded and resolved OpenAPI spec from {spec_url}")
+                with trace_operation("openapi.fetch_and_parse", {"spec_url": spec_url}) as fetch_span:
+                    logger.info(f"Fetching OpenAPI spec from {spec_url}...")
+                    parser = ResolvingParser(spec_url, backend="openapi-spec-validator", strict=False)
+                    spec_data = parser.specification
+                    if spec_data is None or not isinstance(spec_data, dict):
+                        raise RuntimeError(f"Failed to parse OpenAPI spec from {spec_url}: parser returned invalid data")
+                    resolved: dict[str, Any] = spec_data
+                    if fetch_span:
+                        fetch_span.set_attribute("spec_size_bytes", len(str(resolved)))
+                    logger.info(f"Successfully loaded and resolved OpenAPI spec from {spec_url}")
 
                 # Cache the resolved spec
-                _save_spec_to_cache(resolved, cache_path)
+                with trace_operation("openapi.save_cache", {"spec_url": spec_url}):
+                    _save_spec_to_cache(resolved, cache_path)
 
             except ResolutionError as e:
                 # Broken $refs detected - load spec without resolution or validation
-                logger.warning(
-                    f"OpenAPI spec has broken $refs: {e}. "
-                    f"Loading spec as-is without reference resolution. Some schemas may be incomplete."
-                )
-                # Fetch and parse the spec directly without Prance validation
-                with urlopen(spec_url) as response:
-                    content = response.read().decode("utf-8")
-                    if spec_url.endswith((".yaml", ".yml")):
-                        resolved = yaml.safe_load(content)
-                    else:
-                        resolved = json.loads(content)
+                logger.warning(f"OpenAPI spec has broken $refs: {e}. Loading spec as-is without reference resolution. Some schemas may be incomplete.")
+                with trace_operation("openapi.fetch_raw", {"spec_url": spec_url}):
+                    # Fetch and parse the spec directly without Prance validation
+                    with urlopen(spec_url) as response:
+                        content = response.read().decode("utf-8")
+                        if spec_url.endswith((".yaml", ".yml")):
+                            resolved = yaml.safe_load(content)
+                        else:
+                            resolved = json.loads(content)
 
             except Exception as e:
                 # If loading fails completely, provide a helpful error message
                 logger.error(f"Failed to load OpenAPI spec: {e}")
-                raise RuntimeError(
-                    f"Failed to load OpenAPI spec from {spec_url}. "
-                    f"The spec may be malformed or inaccessible. "
-                    f"Error: {e}"
-                ) from e
+                raise RuntimeError(f"Failed to load OpenAPI spec from {spec_url}. The spec may be malformed or inaccessible. Error: {e}") from e
 
         # Wrap in openapi-core Spec for structured access
-        try:
-            spec = Spec.from_dict(resolved)
-        except Exception as e:
-            logger.error(f"Failed to create Spec object from resolved spec: {e}")
-            raise RuntimeError(
-                f"OpenAPI spec structure is invalid. "
-                f"Error: {e}"
-            ) from e
+        with trace_operation("openapi.create_spec_object", {}) as spec_obj_span:
+            try:
+                spec = Spec.from_dict(resolved)  # type: ignore[arg-type]
+                if spec_obj_span:
+                    spec_obj_span.set_attribute("success", True)
+            except Exception as e:
+                if spec_obj_span:
+                    spec_obj_span.set_attribute("success", False)
+                logger.error(f"Failed to create Spec object from resolved spec: {e}")
+                raise RuntimeError(f"OpenAPI spec structure is invalid. Error: {e}") from e
 
         endpoints: list[Endpoint] = []
 
         # Extract all operations
-        # Try using Spec object first, fallback to raw dict if that fails
-        try:
-            # Test if spec has paths attribute by accessing it
-            _ = spec.paths
-            operations_iter = _iter_operations(spec)
-        except (AttributeError, Exception) as e:
-            logger.warning(f"Spec object missing expected attributes, using raw dict fallback: {e}")
-            # Try to extract directly from the raw dict if Spec object is broken
-            operations_iter = _iter_operations_from_dict(resolved)
+        with trace_operation("openapi.extract_endpoints", {}) as extract_span:
+            # Try using Spec object first, fallback to raw dict if that fails
+            try:
+                # Test if spec has paths attribute by accessing it
+                _ = spec.paths  # type: ignore[attr-defined]
+                operations_iter = _iter_operations(spec)
+            except (AttributeError, Exception) as e:
+                logger.warning(f"Spec object missing expected attributes, using raw dict fallback: {e}")
+                # Try to extract directly from the raw dict if Spec object is broken
+                operations_iter = _iter_operations_from_dict(resolved)
 
-        for path_name, method, operation in operations_iter:
-            # Handle both Spec operation objects and raw dicts
-            if isinstance(operation, dict):
-                op_raw = operation
-            else:
-                op_raw = getattr(operation, "_operation", operation)  # type: ignore[attr-defined]
-                if not isinstance(op_raw, dict):
-                    op_raw = {}
+            for path_name, method, operation in operations_iter:
+                # Handle both Spec operation objects and raw dicts
+                if isinstance(operation, dict):
+                    op_raw = operation
+                else:
+                    op_raw = getattr(operation, "_operation", operation)  # type: ignore[attr-defined]
+                    if not isinstance(op_raw, dict):
+                        op_raw = {}
 
-            summary = op_raw.get("summary")
-            description = op_raw.get("description")
-            operation_id = op_raw.get("operationId")
-            tags = list(op_raw.get("tags") or [])
+                summary = op_raw.get("summary")
+                description = op_raw.get("description")
+                operation_id = op_raw.get("operationId")
+                tags = list(op_raw.get("tags") or [])
 
-            # Extract parameters
-            parameters: list[dict[str, Any]] = []
-            if isinstance(operation, dict):
-                # Raw dict mode
-                params_list = op_raw.get("parameters", [])
-                if isinstance(params_list, list):
-                    parameters = [dict(p) if isinstance(p, dict) else {} for p in params_list]
-            else:
-                # Spec object mode
-                for param in operation.parameters:
-                    param_raw = getattr(param, "_parameter", None)
-                    if isinstance(param_raw, dict):
-                        parameters.append(dict(param_raw))
+                # Extract parameters
+                parameters: list[dict[str, Any]] = []
+                if isinstance(operation, dict):
+                    # Raw dict mode
+                    params_list = op_raw.get("parameters", [])
+                    if isinstance(params_list, list):
+                        parameters = [dict(p) if isinstance(p, dict) else {} for p in params_list]
+                else:
+                    # Spec object mode
+                    for param in operation.parameters:
+                        param_raw = getattr(param, "_parameter", None)
+                        if isinstance(param_raw, dict):
+                            parameters.append(dict(param_raw))
 
-            # Extract request body
-            request_body_raw: dict[str, Any] | None = None
-            if isinstance(operation, dict):
-                # Raw dict mode
-                rb = op_raw.get("requestBody")
-                if isinstance(rb, dict):
-                    request_body_raw = dict(rb)
-            else:
-                # Spec object mode
-                if operation.request_body is not None:
-                    rb_raw = getattr(operation.request_body, "_request_body", None)
-                    if isinstance(rb_raw, dict):
-                        request_body_raw = dict(rb_raw)
+                # Extract request body
+                request_body_raw: dict[str, Any] | None = None
+                if isinstance(operation, dict):
+                    # Raw dict mode
+                    rb = op_raw.get("requestBody")
+                    if isinstance(rb, dict):
+                        request_body_raw = dict(rb)
+                else:
+                    # Spec object mode
+                    if operation.request_body is not None:
+                        rb_raw = getattr(operation.request_body, "_request_body", None)
+                        if isinstance(rb_raw, dict):
+                            request_body_raw = dict(rb_raw)
 
-            # Extract responses
-            responses_raw: dict[str, Any] = {}
-            if isinstance(operation, dict):
-                # Raw dict mode
-                responses = op_raw.get("responses", {})
-                if isinstance(responses, dict):
-                    responses_raw = {str(k): dict(v) if isinstance(v, dict) else {} for k, v in responses.items()}
-            else:
-                # Spec object mode
-                for status_code, response in operation.responses.items():
-                    resp_raw = getattr(response, "_response", None)
-                    if isinstance(resp_raw, dict):
-                        responses_raw[str(status_code)] = dict(resp_raw)
+                # Extract responses
+                responses_raw: dict[str, Any] = {}
+                if isinstance(operation, dict):
+                    # Raw dict mode
+                    responses = op_raw.get("responses", {})
+                    if isinstance(responses, dict):
+                        responses_raw = {str(k): dict(v) if isinstance(v, dict) else {} for k, v in responses.items()}
+                else:
+                    # Spec object mode
+                    for status_code, response in operation.responses.items():
+                        resp_raw = getattr(response, "_response", None)
+                        if isinstance(resp_raw, dict):
+                            responses_raw[str(status_code)] = dict(resp_raw)
 
-            endpoints.append(
-                Endpoint(
-                    path=path_name,
-                    method=method,
-                    summary=summary,
-                    description=description,
-                    operation_id=operation_id,
-                    tags=tags,
-                    parameters=parameters,
-                    request_body=request_body_raw,
-                    responses=responses_raw,
-                    docs_url=None,  # filled in by docs_links.py later
+                endpoints.append(
+                    Endpoint(
+                        path=path_name,
+                        method=method,
+                        summary=summary,
+                        description=description,
+                        operation_id=operation_id,
+                        tags=tags,
+                        parameters=parameters,
+                        request_body=request_body_raw,
+                        responses=responses_raw,
+                        docs_url=None,  # filled in by docs_links.py later
+                    )
                 )
-            )
+
+            if extract_span:
+                extract_span.set_attribute("endpoint_count", len(endpoints))
 
         # Extract components
-        components: dict[str, Any] = resolved.get("components") or {}
-        schemas: dict[str, dict[str, Any]] = dict(components.get("schemas") or {})
-        security_schemes: dict[str, dict[str, Any]] = dict(components.get("securitySchemes") or {})
+        with trace_operation("openapi.extract_schemas", {}) as schema_span:
+            components: dict[str, Any] = resolved.get("components") or {}
+            schemas: dict[str, dict[str, Any]] = dict(components.get("schemas") or {})
+            security_schemes: dict[str, dict[str, Any]] = dict(components.get("securitySchemes") or {})
+            if schema_span:
+                schema_span.set_attribute("schema_count", len(schemas))
+                schema_span.set_attribute("security_scheme_count", len(security_schemes))
 
         # Vector index will be initialized lazily on first search to avoid blocking server startup
         return OpenApiIndex(

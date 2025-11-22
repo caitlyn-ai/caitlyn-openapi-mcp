@@ -144,3 +144,7 @@ htmlcov/
 
 # Sentence Transformers Model Cache
 models/
+
+# Telemetry data
+mcp-spans.json
+otel-data/
