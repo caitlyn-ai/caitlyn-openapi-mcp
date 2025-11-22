@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from typing import Protocol
 
 from mcp.server.fastmcp import FastMCP
 
@@ -14,6 +15,14 @@ from .telemetry import setup_telemetry
 from .tools import register_tools
 
 logger = logging.getLogger(__name__)
+
+
+class IndexLoaderProtocol(Protocol):
+    """Protocol for objects that can load and provide OpenAPI indexes."""
+
+    def get_index(self) -> OpenApiIndex:
+        """Get the loaded index."""
+        ...
 
 
 class IndexLoader:
@@ -149,7 +158,7 @@ def _add_request_timing_instrumentation(mcp: FastMCP) -> None:
 
     # Wrap initialize to add OTEL span (this is the very first MCP protocol method called)
     if hasattr(mcp, "initialize"):
-        original_initialize = mcp.initialize
+        original_initialize = mcp.initialize  # type: ignore[attr-defined]
 
         @wraps(original_initialize)
         async def timed_initialize(*args, **kwargs):
@@ -165,7 +174,7 @@ def _add_request_timing_instrumentation(mcp: FastMCP) -> None:
                 result = await original_initialize(*args, **kwargs)
                 return result
 
-        mcp.initialize = timed_initialize
+        mcp.initialize = timed_initialize  # type: ignore[attr-defined]
 
     # Wrap list_tools to add OTEL span
     original_list_tools = mcp.list_tools
@@ -218,8 +227,10 @@ def _add_request_timing_instrumentation(mcp: FastMCP) -> None:
     # Wrap read_resource to add OTEL span
     original_read_resource = mcp.read_resource
 
+    from pydantic import AnyUrl
+
     @wraps(original_read_resource)
-    async def timed_read_resource(uri: str, *args, **kwargs):
+    async def timed_read_resource(uri: AnyUrl | str, *args, **kwargs):  # type: ignore[no-untyped-def]
         is_first = not first_request_seen["value"]
         if is_first:
             first_request_seen["value"] = True
@@ -239,9 +250,9 @@ def _add_request_timing_instrumentation(mcp: FastMCP) -> None:
             result = await original_read_resource(uri, *args, **kwargs)
             return result
 
-    mcp.read_resource = timed_read_resource
+    mcp.read_resource = timed_read_resource  # type: ignore[assignment]
     # Re-register the wrapped handler with the underlying MCP server
-    mcp._mcp_server.read_resource()(timed_read_resource)
+    mcp._mcp_server.read_resource()(timed_read_resource)  # type: ignore[arg-type]
 
     # Wrap call_tool to add OTEL span
     original_call_tool = mcp.call_tool

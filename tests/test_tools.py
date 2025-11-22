@@ -15,7 +15,7 @@ def sample_index():
         "info": {"title": "Test API", "version": "1.0.0"},
         "paths": {},
     }
-    spec = Spec.from_dict(minimal_spec)
+    spec = Spec.from_dict(minimal_spec)  # type: ignore[arg-type]
 
     endpoint1 = Endpoint(
         path="/api/v1/users",

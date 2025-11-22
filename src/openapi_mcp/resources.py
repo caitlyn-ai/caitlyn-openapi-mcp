@@ -5,10 +5,10 @@ from typing import TYPE_CHECKING
 from mcp.server.fastmcp import FastMCP
 
 if TYPE_CHECKING:
-    from .server import IndexLoader
+    from .server import IndexLoaderProtocol
 
 
-def register_resources(mcp: FastMCP, *, index_loader: IndexLoader) -> None:
+def register_resources(mcp: FastMCP, *, index_loader: IndexLoaderProtocol) -> None:
     """
     Register MCP resources for the OpenAPI specification.
 

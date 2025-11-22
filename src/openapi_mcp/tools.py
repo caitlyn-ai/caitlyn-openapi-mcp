@@ -5,10 +5,10 @@ from typing import TYPE_CHECKING, Any
 from mcp.server.fastmcp import FastMCP
 
 if TYPE_CHECKING:
-    from .server import IndexLoader
+    from .server import IndexLoaderProtocol
 
 
-def register_tools(mcp: FastMCP, *, index_loader: IndexLoader) -> None:
+def register_tools(mcp: FastMCP, *, index_loader: IndexLoaderProtocol) -> None:
     """
     Register MCP tools for exploring and understanding the API.
 

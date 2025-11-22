@@ -24,7 +24,7 @@ def sample_index():
             }
         },
     }
-    spec = Spec.from_dict(minimal_spec)
+    spec = Spec.from_dict(minimal_spec)  # type: ignore[arg-type]
 
     endpoint1 = Endpoint(
         path="/api/v1/users",

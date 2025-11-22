@@ -32,7 +32,7 @@ def sample_index(sample_endpoint):
         "info": {"title": "Test API", "version": "1.0.0"},
         "paths": {},
     }
-    spec = Spec.from_dict(minimal_spec)
+    spec = Spec.from_dict(minimal_spec)  # type: ignore[arg-type]
 
     return OpenApiIndex(
         spec=spec,
