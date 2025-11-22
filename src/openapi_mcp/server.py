@@ -121,7 +121,9 @@ def create_server() -> FastMCP:
         Configured FastMCP server instance
     """
     cfg = load_config()
-    mcp = FastMCP(name="caitlyn-openapi-mcp")
+    # For AgentCore compatibility, use stateless_http=True when using streamable-http transport
+    is_stateless = cfg.transport == "streamable-http"
+    mcp = FastMCP(name="caitlyn-openapi-mcp", host="0.0.0.0", stateless_http=is_stateless)
 
     # Start loading OpenAPI spec in background (non-blocking)
     _index_loader.start_loading_background(
