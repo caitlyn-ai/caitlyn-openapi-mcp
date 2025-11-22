@@ -3,16 +3,8 @@ name: CI/CD
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      deploy:
-        description: "Deploy to production (build Docker & package)"
-        required: false
-        type: boolean
-        default: false
 
 env:
   PYTHON_VERSION: "3.12"
@@ -29,11 +21,20 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: "pip"
+          cache-dependency-path: "pyproject.toml"
+
+      - name: Cache installed packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.local
+          key: pip-lint-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            pip-lint-${{ runner.os }}-${{ env.PYTHON_VERSION }}-
 
       - name: Install dependencies
         run: |
-          pip install black ruff pyright
-          pip install -e ".[dev]"
+          pip install --user black ruff pyright
+          pip install --user -e ".[dev]"
 
       - name: Check formatting with black
         run: black --check src tests
@@ -56,9 +57,18 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: "pip"
+          cache-dependency-path: "pyproject.toml"
+
+      - name: Cache installed packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.local
+          key: pip-test-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            pip-test-${{ runner.os }}-${{ env.PYTHON_VERSION }}-
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: pip install --user -e ".[dev]"
 
       - name: Run tests with coverage
         run: pytest --cov=src --cov-report=xml --cov-report=term-missing
@@ -74,7 +84,7 @@ jobs:
     name: Build Python Package
     runs-on: ubuntu-latest
     needs: [lint, test]
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.deploy == true)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
 
@@ -82,9 +92,19 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: "pyproject.toml"
+
+      - name: Cache build tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.local
+          key: pip-build-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            pip-build-${{ runner.os }}-${{ env.PYTHON_VERSION }}-
 
       - name: Install build tools
-        run: pip install build twine
+        run: pip install --user build twine
 
       - name: Build package
         run: python -m build
@@ -92,18 +112,18 @@ jobs:
       - name: Check package
         run: twine check dist/*
 
-      - name: Upload artifacts
+      - name: Upload package artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: python-package
+          name: python-package-${{ github.sha }}
           path: dist/
-          retention-days: 7
+          retention-days: 30
 
   build-docker:
     name: Build Docker Image
     runs-on: ubuntu-latest
     needs: [lint, test]
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.deploy == true)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       id-token: write
       contents: read
@@ -125,22 +145,7 @@ jobs:
         with:
           mask-password: "true"
 
-      - name: Login to Public ECR
-        run: |
-          aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
-
-      - name: Determine version tag
-        id: version
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/}
-          else
-            VERSION=${GITHUB_SHA::8}
-          fi
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "Building version: ${VERSION}"
-
-      - name: Build and push Docker image
+      - name: Build and push Docker image (commit SHA)
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -149,7 +154,7 @@ jobs:
           provenance: false
           sbom: false
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/caitlyn/mcp/openapi:${{ steps.version.outputs.version }}
+            ${{ steps.login-ecr.outputs.registry }}/caitlyn/mcp/openapi:${{ github.sha }}
             ${{ steps.login-ecr.outputs.registry }}/caitlyn/mcp/openapi:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -157,8 +162,8 @@ jobs:
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
-    needs: build-docker
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.deploy == true)
+    needs: [build-docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       id-token: write
       contents: read
@@ -176,20 +181,10 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Determine version tag
-        id: version
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/}
-          else
-            VERSION=${GITHUB_SHA::8}
-          fi
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ steps.login-ecr.outputs.registry }}/caitlyn/mcp/openapi:${{ steps.version.outputs.version }}
+          image-ref: ${{ steps.login-ecr.outputs.registry }}/caitlyn/mcp/openapi:${{ github.sha }}
           format: "sarif"
           output: "trivy-results.sarif"
           severity: "HIGH,CRITICAL"
@@ -200,117 +195,49 @@ jobs:
           sarif_file: "trivy-results.sarif"
         continue-on-error: true
 
-  publish-pypi:
-    name: Publish to PyPI
+  release:
+    name: Semantic Release
     runs-on: ubuntu-latest
-    needs: [build-package, security-scan]
-    if: startsWith(github.ref, 'refs/tags/v')
-    environment:
-      name: pypi
-      url: https://pypi.org/project/caitlyn-openapi-mcp/
-    permissions:
-      id-token: write # For trusted publishing
-      contents: read
-    steps:
-      - name: Download package artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: python-package
-          path: dist/
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          # Uses trusted publishing - no token needed!
-          print-hash: true
-
-  publish-docker-stable:
-    name: Tag Docker Image as Stable
-    runs-on: ubuntu-latest
-    needs: [security-scan]
-    if: startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ap-southeast-2
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Extract version
-        id: version
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-
-      - name: Tag image as stable
-        run: |
-          REGISTRY=${{ steps.login-ecr.outputs.registry }}
-          REPO=caitlyn/mcp/openapi
-          VERSION=${{ steps.version.outputs.version }}
-
-          # Pull the commit SHA tagged image
-          docker pull ${REGISTRY}/${REPO}:${GITHUB_SHA::8}
-
-          # Tag it with version and stable
-          docker tag ${REGISTRY}/${REPO}:${GITHUB_SHA::8} ${REGISTRY}/${REPO}:${VERSION}
-          docker tag ${REGISTRY}/${REPO}:${GITHUB_SHA::8} ${REGISTRY}/${REPO}:stable
-
-          # Push the tags
-          docker push ${REGISTRY}/${REPO}:${VERSION}
-          docker push ${REGISTRY}/${REPO}:stable
-
-          echo "✅ Published stable images with tags ${VERSION} and stable"
-
-  create-release:
-    name: Create GitHub Release
-    runs-on: ubuntu-latest
-    needs: [publish-pypi, publish-docker-stable]
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-package, build-docker, security-scan]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
+      issues: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download package artifacts
-        uses: actions/download-artifact@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          name: python-package
-          path: dist/
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: "pyproject.toml"
 
-      - name: Generate changelog
-        id: changelog
+      - name: Cache installed packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.local
+          key: pip-release-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            pip-release-${{ runner.os }}-${{ env.PYTHON_VERSION }}-
+
+      - name: Install dependencies
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          PREV_TAG=$(git describe --abbrev=0 --tags ${GITHUB_REF}^)
+          pip install --user python-semantic-release
+          pip install --user -e ".[dev]"
 
-          echo "## What's Changed" > CHANGELOG.md
-          git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" >> CHANGELOG.md
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          echo "## Installation" >> CHANGELOG.md
-          echo "" >> CHANGELOG.md
-          echo '```bash' >> CHANGELOG.md
-          echo "pip install caitlyn-openapi-mcp==${VERSION#v}" >> CHANGELOG.md
-          echo '```' >> CHANGELOG.md
-          echo "" >> CHANGELOG.md
-          echo "## Docker Image" >> CHANGELOG.md
-          echo "" >> CHANGELOG.md
-          echo '```bash' >> CHANGELOG.md
-          echo "docker pull 011528297224.dkr.ecr.ap-southeast-2.amazonaws.com/caitlyn/mcp/openapi:${VERSION}" >> CHANGELOG.md
-          echo '```' >> CHANGELOG.md
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          body_path: CHANGELOG.md
-          files: dist/*
-          draft: false
-          prerelease: false
+      - name: Run Semantic Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          semantic-release version
+          semantic-release publish
