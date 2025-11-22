@@ -33,14 +33,24 @@ class IndexLoader:
                 return
             self._loading = True
 
+        # Capture current trace context to propagate to background thread
+        from opentelemetry import context
+
+        current_context = context.get_current()
+
         def _load():
             from .telemetry import trace_operation
 
+            # Attach the parent context in the background thread
+            token = context.attach(current_context)
             try:
-                with trace_operation("openapi.background_load", {"spec_url": spec_url}):
+                # This will now be a child span of the startup trace
+                with trace_operation("mcp.background.openapi_load", {"spec_url": spec_url}):
                     logger.info("Starting background OpenAPI spec load...")
                     cfg = load_config()
-                    index = load_openapi_spec_from_url(cfg.spec_url)
+
+                    with trace_operation("openapi.load_spec_full", {"spec_url": cfg.spec_url}):
+                        index = load_openapi_spec_from_url(cfg.spec_url)
 
                     with trace_operation("openapi.attach_docs_links", {"renderer": cfg.docs_renderer}):
                         attach_docs_links(index, renderer=cfg.docs_renderer, base_url=cfg.docs_base_url)
@@ -58,6 +68,8 @@ class IndexLoader:
                 with self._lock:
                     self._loading = False
                 raise
+            finally:
+                context.detach(token)
 
         self._load_thread = threading.Thread(target=_load, daemon=True, name="openapi-spec-loader")
         self._load_thread.start()
@@ -99,33 +111,26 @@ def create_server() -> FastMCP:
     Returns:
         Configured FastMCP server instance
     """
-    from .telemetry import trace_operation
+    cfg = load_config()
+    mcp = FastMCP(name="caitlyn-openapi-mcp")
 
-    with trace_operation("mcp.server.create", {}):
-        cfg = load_config()
+    # Start loading OpenAPI spec in background (non-blocking)
+    _index_loader.start_loading_background(
+        spec_url=cfg.spec_url,
+        docs_renderer=cfg.docs_renderer,
+        docs_base_url=cfg.docs_base_url,
+    )
 
-        with trace_operation("mcp.fastmcp.init", {}):
-            mcp = FastMCP(name="caitlyn-openapi-mcp")
+    # Register resources and tools - they will wait for index when called
+    register_resources(mcp, index_loader=_index_loader)
+    register_tools(mcp, index_loader=_index_loader)
 
-        # Start loading OpenAPI spec in background (non-blocking)
-        with trace_operation("mcp.background_loading.start", {}):
-            _index_loader.start_loading_background(
-                spec_url=cfg.spec_url,
-                docs_renderer=cfg.docs_renderer,
-                docs_base_url=cfg.docs_base_url,
-            )
+    # Add request timing instrumentation
+    _add_request_timing_instrumentation(mcp)
 
-        # Register resources and tools - they will wait for index when called
-        with trace_operation("mcp.register_handlers", {}):
-            register_resources(mcp, index_loader=_index_loader)
-            register_tools(mcp, index_loader=_index_loader)
+    logger.info("✓ Server ready (spec loading in background)")
 
-        # Add request timing instrumentation
-        _add_request_timing_instrumentation(mcp)
-
-        logger.info("✓ Server ready (spec loading in background)")
-
-        return mcp
+    return mcp
 
 
 def _add_request_timing_instrumentation(mcp: FastMCP) -> None:
@@ -142,6 +147,26 @@ def _add_request_timing_instrumentation(mcp: FastMCP) -> None:
     # Track if we've seen the first request
     first_request_seen = {"value": False}
 
+    # Wrap initialize to add OTEL span (this is the very first MCP protocol method called)
+    if hasattr(mcp, "initialize"):
+        original_initialize = mcp.initialize
+
+        @wraps(original_initialize)
+        async def timed_initialize(*args, **kwargs):
+            first_request_seen["value"] = True
+            logger.info("🔔 First MCP request received: initialize")
+
+            from .telemetry import trace_operation_async
+
+            with trace_operation_async(
+                "mcp.initialize",
+                {"mcp.method": "initialize", "mcp.first_request": True},
+            ):
+                result = await original_initialize(*args, **kwargs)
+                return result
+
+        mcp.initialize = timed_initialize
+
     # Wrap list_tools to add OTEL span
     original_list_tools = mcp.list_tools
 
@@ -152,13 +177,19 @@ def _add_request_timing_instrumentation(mcp: FastMCP) -> None:
             first_request_seen["value"] = True
             logger.info("🔔 First MCP request received: list_tools")
 
-        with tracer.start_as_current_span("mcp.list_tools") as span:
-            span.set_attribute("mcp.method", "list_tools")
-            span.set_attribute("mcp.first_request", is_first)
+        from .telemetry import trace_operation_async
+
+        with trace_operation_async(
+            "mcp.list_tools",
+            {"mcp.method": "list_tools", "mcp.first_request": is_first},
+            new_trace=True,
+        ):
             result = await original_list_tools(*args, **kwargs)
             return result
 
     mcp.list_tools = timed_list_tools
+    # Re-register the wrapped handler with the underlying MCP server
+    mcp._mcp_server.list_tools()(timed_list_tools)
 
     # Wrap list_resources to add OTEL span
     original_list_resources = mcp.list_resources
@@ -170,31 +201,78 @@ def _add_request_timing_instrumentation(mcp: FastMCP) -> None:
             first_request_seen["value"] = True
             logger.info("🔔 First MCP request received: list_resources")
 
-        with tracer.start_as_current_span("mcp.list_resources") as span:
-            span.set_attribute("mcp.method", "list_resources")
-            span.set_attribute("mcp.first_request", is_first)
+        from .telemetry import trace_operation_async
+
+        with trace_operation_async(
+            "mcp.list_resources",
+            {"mcp.method": "list_resources", "mcp.first_request": is_first},
+            new_trace=True,
+        ):
             result = await original_list_resources(*args, **kwargs)
             return result
 
     mcp.list_resources = timed_list_resources
+    # Re-register the wrapped handler with the underlying MCP server
+    mcp._mcp_server.list_resources()(timed_list_resources)
+
+    # Wrap read_resource to add OTEL span
+    original_read_resource = mcp.read_resource
+
+    @wraps(original_read_resource)
+    async def timed_read_resource(uri: str, *args, **kwargs):
+        is_first = not first_request_seen["value"]
+        if is_first:
+            first_request_seen["value"] = True
+            logger.info("🔔 First MCP request received: read_resource")
+
+        from .telemetry import trace_operation_async
+
+        with trace_operation_async(
+            "mcp.read_resource",
+            {
+                "mcp.method": "read_resource",
+                "mcp.first_request": is_first,
+                "resource.uri": uri,
+            },
+            new_trace=True,
+        ):
+            result = await original_read_resource(uri, *args, **kwargs)
+            return result
+
+    mcp.read_resource = timed_read_resource
+    # Re-register the wrapped handler with the underlying MCP server
+    mcp._mcp_server.read_resource()(timed_read_resource)
 
     # Wrap call_tool to add OTEL span
     original_call_tool = mcp.call_tool
 
     @wraps(original_call_tool)
-    async def timed_call_tool(*args, **kwargs):
+    async def timed_call_tool(name: str, arguments: dict, *args, **kwargs):
         is_first = not first_request_seen["value"]
         if is_first:
             first_request_seen["value"] = True
             logger.info("🔔 First MCP request received: call_tool")
 
-        with tracer.start_as_current_span("mcp.call_tool") as span:
-            span.set_attribute("mcp.method", "call_tool")
-            span.set_attribute("mcp.first_request", is_first)
-            result = await original_call_tool(*args, **kwargs)
+        from .telemetry import trace_operation_async
+
+        # Include tool name in the span name for better visibility in Jaeger
+        span_name = f"mcp.call_tool.{name}"
+        with trace_operation_async(
+            span_name,
+            {
+                "mcp.method": "call_tool",
+                "mcp.first_request": is_first,
+                "tool.name": name,
+                "tool.arguments": str(arguments),
+            },
+            new_trace=True,
+        ):
+            result = await original_call_tool(name, arguments, *args, **kwargs)
             return result
 
     mcp.call_tool = timed_call_tool
+    # Re-register the wrapped handler with the underlying MCP server
+    mcp._mcp_server.call_tool(validate_input=False)(timed_call_tool)
 
 
 def main() -> None:
@@ -218,27 +296,18 @@ def main() -> None:
     setup_telemetry()
 
     # Now that OTEL is set up, use it to trace startup
-    from .telemetry import get_tracer, trace_operation
+    from .telemetry import trace_operation
 
-    tracer = get_tracer()
+    cfg = load_config()
 
-    if tracer:
-        with trace_operation("mcp.server.full_startup", {"mode": "stdio"}):
-            cfg = load_config()
-            mcp = create_server()
-
-            logger.info("🚀 Starting MCP transport - ready for connections")
-
-            with tracer.start_as_current_span("mcp.transport.run") as transport_span:
-                transport_span.set_attribute("transport.type", cfg.transport)
-                # Type assertion - config ensures this is a valid transport
-                mcp.run(transport=cfg.transport)  # type: ignore[arg-type]
-    else:
-        # Fallback if OTEL not initialized
-        cfg = load_config()
+    # Single top-level trace for entire server initialization
+    with trace_operation("mcp.server.startup", {"transport": cfg.transport}):
         mcp = create_server()
         logger.info("🚀 Starting MCP transport - ready for connections")
-        mcp.run(transport=cfg.transport)  # type: ignore[arg-type]
+
+    # Run transport outside the initialization trace
+    # This allows protocol requests to be separate traces
+    mcp.run(transport=cfg.transport)  # type: ignore[arg-type]
 
 
 if __name__ == "__main__":

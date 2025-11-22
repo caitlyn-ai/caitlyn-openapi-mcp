@@ -52,7 +52,11 @@ dev:
 	@echo "Starting OTEL Collector and Jaeger..."
 	@$(MAKE) otel-up
 	@echo ""
+	@echo "Waiting for Jaeger to be ready..."
+	@sleep 2
+	@echo ""
 	@echo "Starting MCP Inspector for local development..."
+	@(sleep 8 && echo "Opening Jaeger UI in browser..." && open http://localhost:16686 2>/dev/null || true) &
 	npx @modelcontextprotocol/inspector \
 		-e OPENAPI_SPEC_URL="https://betty.getcaitlyn.ai/docs/openapi-v1.json" \
 		-e DOCS_BASE_URL="https://betty.getcaitlyn.ai/api/docs" \

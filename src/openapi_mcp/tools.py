@@ -21,6 +21,7 @@ def register_tools(mcp: FastMCP, *, index_loader: IndexLoader) -> None:
         mcp: FastMCP server instance
         index_loader: Index loader that provides access to the parsed OpenAPI index
     """
+    from .telemetry import trace_operation
 
     @mcp.tool()
     def list_api_endpoints(
@@ -37,43 +38,47 @@ def register_tools(mcp: FastMCP, *, index_loader: IndexLoader) -> None:
         Returns:
             List of endpoints with path, method, summary, description, tags, and docs_url
         """
-        index = index_loader.get_index()
-        results: list[dict[str, Any]] = []
-        needle = search.lower() if search else None
+        with trace_operation("mcp.tool.list_api_endpoints", {"tag": tag, "search": search}) as span:
+            index = index_loader.get_index()
+            results: list[dict[str, Any]] = []
+            needle = search.lower() if search else None
 
-        for ep in index.endpoints:
-            # Filter by tag if specified
-            if tag and tag not in ep.tags:
-                continue
-
-            # Filter by search term if specified
-            if needle:
-                haystack = " ".join(
-                    [
-                        ep.path,
-                        ep.method,
-                        ep.summary or "",
-                        ep.description or "",
-                        ep.operation_id or "",
-                        " ".join(ep.tags),
-                    ]
-                ).lower()
-                if needle not in haystack:
+            for ep in index.endpoints:
+                # Filter by tag if specified
+                if tag and tag not in ep.tags:
                     continue
 
-            results.append(
-                {
-                    "path": ep.path,
-                    "method": ep.method,
-                    "summary": ep.summary,
-                    "description": ep.description,
-                    "operation_id": ep.operation_id,
-                    "tags": ep.tags,
-                    "docs_url": ep.docs_url,
-                }
-            )
+                # Filter by search term if specified
+                if needle:
+                    haystack = " ".join(
+                        [
+                            ep.path,
+                            ep.method,
+                            ep.summary or "",
+                            ep.description or "",
+                            ep.operation_id or "",
+                            " ".join(ep.tags),
+                        ]
+                    ).lower()
+                    if needle not in haystack:
+                        continue
 
-        return results
+                results.append(
+                    {
+                        "path": ep.path,
+                        "method": ep.method,
+                        "summary": ep.summary,
+                        "description": ep.description,
+                        "operation_id": ep.operation_id,
+                        "tags": ep.tags,
+                        "docs_url": ep.docs_url,
+                    }
+                )
+
+            if span:
+                span.set_attribute("result_count", len(results))
+
+            return results
 
     @mcp.tool()
     def get_endpoint_details(method: str, path: str) -> dict | None:
@@ -87,23 +92,28 @@ def register_tools(mcp: FastMCP, *, index_loader: IndexLoader) -> None:
         Returns:
             Complete endpoint details including parameters, request body schema, response schemas, and docs_url, or None if not found
         """
-        index = index_loader.get_index()
-        method_upper = method.upper()
-        for ep in index.endpoints:
-            if ep.method == method_upper and ep.path == path:
-                return {
-                    "path": ep.path,
-                    "method": ep.method,
-                    "summary": ep.summary,
-                    "description": ep.description,
-                    "operation_id": ep.operation_id,
-                    "tags": ep.tags,
-                    "parameters": ep.parameters,
-                    "request_body": ep.request_body,
-                    "responses": ep.responses,
-                    "docs_url": ep.docs_url,
-                }
-        return None
+        with trace_operation("mcp.tool.get_endpoint_details", {"method": method, "path": path}) as span:
+            index = index_loader.get_index()
+            method_upper = method.upper()
+            for ep in index.endpoints:
+                if ep.method == method_upper and ep.path == path:
+                    if span:
+                        span.set_attribute("found", True)
+                    return {
+                        "path": ep.path,
+                        "method": ep.method,
+                        "summary": ep.summary,
+                        "description": ep.description,
+                        "operation_id": ep.operation_id,
+                        "tags": ep.tags,
+                        "parameters": ep.parameters,
+                        "request_body": ep.request_body,
+                        "responses": ep.responses,
+                        "docs_url": ep.docs_url,
+                    }
+            if span:
+                span.set_attribute("found", False)
+            return None
 
     @mcp.tool()
     def get_schema_definition(schema_name: str) -> dict | None:
@@ -116,15 +126,20 @@ def register_tools(mcp: FastMCP, *, index_loader: IndexLoader) -> None:
         Returns:
             Schema definition with properties, types, required fields, and docs_url, or None if not found
         """
-        index = index_loader.get_index()
-        schema = index.schemas.get(schema_name)
-        if schema is None:
-            return None
-        return {
-            "name": schema_name,
-            "schema": schema,
-            "docs_url": index.schema_docs_urls.get(schema_name),
-        }
+        with trace_operation("mcp.tool.get_schema_definition", {"schema_name": schema_name}) as span:
+            index = index_loader.get_index()
+            schema = index.schemas.get(schema_name)
+            if schema is None:
+                if span:
+                    span.set_attribute("found", False)
+                return None
+            if span:
+                span.set_attribute("found", True)
+            return {
+                "name": schema_name,
+                "schema": schema,
+                "docs_url": index.schema_docs_urls.get(schema_name),
+            }
 
     @mcp.tool()
     def search_api_endpoints(query: str, max_results: int = 20) -> list[dict[str, Any]]:
@@ -138,45 +153,17 @@ def register_tools(mcp: FastMCP, *, index_loader: IndexLoader) -> None:
         Returns:
             Matching endpoints with path, method, summary, description, and docs_url
         """
-        index = index_loader.get_index()
-        # Try vector search first if available
-        # Lazy initialization happens here on first search
-        index.ensure_vector_index()
+        with trace_operation("mcp.tool.search_api_endpoints", {"query": query, "max_results": max_results}) as span:
+            index = index_loader.get_index()
+            # Try vector search first if available
+            # Lazy initialization happens here on first search
+            index.ensure_vector_index()
 
-        if index.vector_index is not None:
-            vector_results = index.vector_index.search(query, top_k=max_results)
-            return [
-                {
-                    "path": ep.path,
-                    "method": ep.method,
-                    "summary": ep.summary or "",
-                    "description": ep.description or "",
-                    "operation_id": ep.operation_id or "",
-                    "tags": ep.tags,
-                    "docs_url": ep.docs_url,
-                    "relevance_score": round(score, 3),
-                }
-                for ep, score in vector_results
-            ]
-
-        # Fallback to substring search if vector search unavailable
-        needle = query.lower()
-        matches: list[dict[str, Any]] = []
-
-        for ep in index.endpoints:
-            haystack = " ".join(
-                [
-                    ep.path,
-                    ep.method,
-                    ep.summary or "",
-                    ep.description or "",
-                    ep.operation_id or "",
-                    " ".join(ep.tags),
-                ]
-            ).lower()
-
-            if needle in haystack:
-                matches.append(
+            if index.vector_index is not None:
+                if span:
+                    span.set_attribute("search_method", "vector")
+                vector_results = index.vector_index.search(query, top_k=max_results)
+                results = [
                     {
                         "path": ep.path,
                         "method": ep.method,
@@ -185,12 +172,50 @@ def register_tools(mcp: FastMCP, *, index_loader: IndexLoader) -> None:
                         "operation_id": ep.operation_id or "",
                         "tags": ep.tags,
                         "docs_url": ep.docs_url,
+                        "relevance_score": round(score, 3),
                     }
-                )
-                if len(matches) >= max_results:
-                    break
+                    for ep, score in vector_results
+                ]
+                if span:
+                    span.set_attribute("result_count", len(results))
+                return results
 
-        return matches
+            # Fallback to substring search if vector search unavailable
+            if span:
+                span.set_attribute("search_method", "substring")
+            needle = query.lower()
+            matches: list[dict[str, Any]] = []
+
+            for ep in index.endpoints:
+                haystack = " ".join(
+                    [
+                        ep.path,
+                        ep.method,
+                        ep.summary or "",
+                        ep.description or "",
+                        ep.operation_id or "",
+                        " ".join(ep.tags),
+                    ]
+                ).lower()
+
+                if needle in haystack:
+                    matches.append(
+                        {
+                            "path": ep.path,
+                            "method": ep.method,
+                            "summary": ep.summary or "",
+                            "description": ep.description or "",
+                            "operation_id": ep.operation_id or "",
+                            "tags": ep.tags,
+                            "docs_url": ep.docs_url,
+                        }
+                    )
+                    if len(matches) >= max_results:
+                        break
+
+            if span:
+                span.set_attribute("result_count", len(matches))
+            return matches
 
     @mcp.tool()
     def list_api_tags() -> list[dict[str, Any]]:
@@ -200,11 +225,15 @@ def register_tools(mcp: FastMCP, *, index_loader: IndexLoader) -> None:
         Returns:
             List of tags with endpoint counts
         """
-        index = index_loader.get_index()
-        tag_counts: dict[str, int] = {}
+        with trace_operation("mcp.tool.list_api_tags", {}) as span:
+            index = index_loader.get_index()
+            tag_counts: dict[str, int] = {}
 
-        for ep in index.endpoints:
-            for tag in ep.tags:
-                tag_counts[tag] = tag_counts.get(tag, 0) + 1
+            for ep in index.endpoints:
+                for tag in ep.tags:
+                    tag_counts[tag] = tag_counts.get(tag, 0) + 1
 
-        return [{"tag": tag, "endpoint_count": count} for tag, count in sorted(tag_counts.items())]
+            results = [{"tag": tag, "endpoint_count": count} for tag, count in sorted(tag_counts.items())]
+            if span:
+                span.set_attribute("tag_count", len(results))
+            return results

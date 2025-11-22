@@ -10,9 +10,11 @@ from openapi_mcp.openapi_loader import load_openapi_spec_from_url
 @contextmanager
 def mock_cache_and_telemetry():
     """Mock cache and telemetry functions."""
-    with patch("openapi_mcp.openapi_loader._load_spec_from_cache", return_value=None), \
-         patch("openapi_mcp.openapi_loader._save_spec_to_cache"), \
-         patch("openapi_mcp.openapi_loader.trace_operation") as mock_trace:
+    with (
+        patch("openapi_mcp.openapi_loader._load_spec_from_cache", return_value=None),
+        patch("openapi_mcp.openapi_loader._save_spec_to_cache"),
+        patch("openapi_mcp.openapi_loader.trace_operation") as mock_trace,
+    ):
         # Make trace_operation return a context manager that yields None
         mock_trace.return_value.__enter__ = MagicMock(return_value=None)
         mock_trace.return_value.__exit__ = MagicMock(return_value=None)
@@ -36,11 +38,7 @@ def minimal_openapi_spec():
                     "responses": {
                         "200": {
                             "description": "Success",
-                            "content": {
-                                "application/json": {
-                                    "schema": {"$ref": "#/components/schemas/UserList"}
-                                }
-                            },
+                            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserList"}}},
                         }
                     },
                 }
@@ -60,9 +58,7 @@ def minimal_openapi_spec():
                     "items": {"$ref": "#/components/schemas/User"},
                 },
             },
-            "securitySchemes": {
-                "bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}
-            },
+            "securitySchemes": {"bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}},
         },
     }
 

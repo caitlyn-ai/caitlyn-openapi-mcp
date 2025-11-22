@@ -52,24 +52,38 @@ class OpenApiIndex:
         if self._vector_index_initialized or self._vector_index_loading:
             return
 
+        # Capture current trace context to propagate to background thread
+        from opentelemetry import context
+
+        current_context = context.get_current()
+
         def _load_in_background():
-            with self._vector_index_lock:
-                if self._vector_index_initialized:
-                    return
+            from .telemetry import trace_operation
 
-                self._vector_index_loading = True
-                try:
-                    logger.info("Starting background vector search index initialization...")
-                    from .vector_search import VectorSearchIndex
+            # Attach the parent context in the background thread
+            token = context.attach(current_context)
+            try:
+                # This will now be a child span of the openapi_load trace
+                with trace_operation("mcp.background.vector_index_load", {"endpoint_count": len(self.endpoints)}):
+                    with self._vector_index_lock:
+                        if self._vector_index_initialized:
+                            return
 
-                    self.vector_index = VectorSearchIndex(self.endpoints)
-                    self._vector_index_initialized = True
-                    logger.info("Vector search index ready for semantic search")
-                except Exception as e:
-                    logger.warning(f"Failed to create vector search index: {e}. Semantic search will be unavailable.")
-                    self._vector_index_initialized = True  # Mark as attempted to avoid retrying
-                finally:
-                    self._vector_index_loading = False
+                        self._vector_index_loading = True
+                        try:
+                            logger.info("Starting background vector search index initialization...")
+                            from .vector_search import VectorSearchIndex
+
+                            self.vector_index = VectorSearchIndex(self.endpoints)
+                            self._vector_index_initialized = True
+                            logger.info("Vector search index ready for semantic search")
+                        except Exception as e:
+                            logger.warning(f"Failed to create vector search index: {e}. Semantic search will be unavailable.")
+                            self._vector_index_initialized = True  # Mark as attempted to avoid retrying
+                        finally:
+                            self._vector_index_loading = False
+            finally:
+                context.detach(token)
 
         thread = threading.Thread(target=_load_in_background, daemon=True, name="vector-index-loader")
         thread.start()

@@ -53,7 +53,7 @@ python -m openapi_mcp.server
 
 The `make dev` command starts:
 - **OTEL Collector** - Captures traces and logs
-- **Jaeger UI** - Visualize telemetry at http://localhost:16686
+- **Jaeger UI** - Visualize telemetry (auto-opens at http://localhost:16686)
 - **MCP Inspector** - Interactive testing UI
 
 See [TELEMETRY.md](docs/TELEMETRY.md) for details on observability.

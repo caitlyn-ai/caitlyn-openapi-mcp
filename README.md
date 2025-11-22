@@ -461,7 +461,7 @@ make dev
 
 This launches:
 - **OTEL Collector** - Receives telemetry on localhost:4317
-- **Jaeger UI** - Visualize traces at http://localhost:16686
+- **Jaeger UI** - Visualize traces (auto-opens at http://localhost:16686)
 - **MCP Inspector** - Interactive testing interface
 
 The inspector will open a web interface where you can:
@@ -472,12 +472,7 @@ The inspector will open a web interface where you can:
 - Monitor performance with OpenTelemetry traces
 - Validate the server behavior before deployment
 
-**View telemetry data:**
-
-```bash
-# Jaeger UI for traces and logs
-open http://localhost:16686
-```
+The Jaeger UI will automatically open in your browser to view traces and logs.
 
 **Manual usage with custom API:**
 

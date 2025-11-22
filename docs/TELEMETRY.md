@@ -13,10 +13,8 @@ The easiest way to use telemetry during development is to run `make dev`, which 
 
 ```bash
 # Start everything (OTEL collector + Jaeger + MCP server)
+# This automatically opens Jaeger UI in your browser
 make dev
-
-# View telemetry in Jaeger UI
-open http://localhost:16686
 ```
 
 When you're done:
@@ -93,7 +91,19 @@ The server creates detailed spans for:
 - `mcp.server.create` - Server initialization
 - `mcp.list_tools` - Tool listing (mcp.first_request)
 - `mcp.list_resources` - Resource listing
-- `mcp.call_tool` - Tool execution
+- `mcp.call_tool` - Tool execution (protocol-level)
+
+#### MCP Tool Execution
+- `mcp.tool.list_api_endpoints` - List endpoints with optional tag/search filters
+  - Attributes: tag, search, result_count
+- `mcp.tool.get_endpoint_details` - Get specific endpoint details
+  - Attributes: method, path, found (boolean)
+- `mcp.tool.get_schema_definition` - Get schema structure
+  - Attributes: schema_name, found (boolean)
+- `mcp.tool.search_api_endpoints` - Semantic/keyword search for endpoints
+  - Attributes: query, max_results, search_method (vector/substring), result_count
+- `mcp.tool.list_api_tags` - List all API tags/categories
+  - Attributes: tag_count
 
 ### Logs
 

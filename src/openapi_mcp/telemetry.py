@@ -169,3 +169,59 @@ def trace_operation(operation_name: str, attributes: dict[str, Any] | None = Non
             span.record_exception(e)
             span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
             raise
+
+
+@contextmanager
+def trace_operation_async(operation_name: str, attributes: dict[str, Any] | None = None, new_trace: bool = False):
+    """
+    Context manager for tracing async operations.
+
+    Use this in async functions to ensure proper span context propagation.
+
+    Args:
+        operation_name: Name of the operation being traced
+        attributes: Optional attributes to attach to the span
+        new_trace: If True, start a new trace (root span) instead of a child span
+
+    Usage:
+        async def my_async_function():
+            with trace_operation_async("my_operation", {"key": "value"}):
+                # Your async code here
+                await something()
+    """
+    tracer = get_tracer()
+    if tracer is None:
+        # Telemetry not initialized, just yield
+        yield None
+        return
+
+    # For MCP protocol requests, we want new traces, not child spans
+    if new_trace:
+        # Start a new trace by detaching from the current context
+        from opentelemetry import context
+
+        # Create a new context without any parent
+        token = context.attach(context.Context())
+        try:
+            with tracer.start_as_current_span(operation_name) as span:
+                if attributes:
+                    span.set_attributes(attributes)
+                try:
+                    yield span
+                except Exception as e:
+                    span.record_exception(e)
+                    span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+                    raise
+        finally:
+            context.detach(token)
+    else:
+        # Normal child span
+        with tracer.start_as_current_span(operation_name) as span:
+            if attributes:
+                span.set_attributes(attributes)
+            try:
+                yield span
+            except Exception as e:
+                span.record_exception(e)
+                span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+                raise
