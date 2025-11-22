@@ -9,6 +9,64 @@ permissions:
   id-token: write
 
 jobs:
+  build-and-publish-docker:
+    name: Build and Publish Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          COMMIT_SHA=$(git rev-list -n 1 ${{ github.ref }})
+          echo "version=${VERSION#v}" >> $GITHUB_OUTPUT
+          echo "tag=${VERSION}" >> $GITHUB_OUTPUT
+          echo "sha=${COMMIT_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Download Docker image artifact from CI
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          name: docker-image-${{ steps.version.outputs.sha }}
+          path: /tmp
+          workflow: ci.yml
+          commit: ${{ steps.version.outputs.sha }}
+
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ap-southeast-2
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Tag and push Docker image to ECR
+        run: |
+          REGISTRY=${{ steps.login-ecr.outputs.registry }}
+          REPO=caitlyn/mcp/openapi
+          VERSION=${{ steps.version.outputs.tag }}
+          SHA=${{ steps.version.outputs.sha }}
+
+          # Tag the loaded image with ECR tags
+          docker tag caitlyn-openapi-mcp:${SHA} ${REGISTRY}/${REPO}:${VERSION}
+          docker tag caitlyn-openapi-mcp:${SHA} ${REGISTRY}/${REPO}:latest
+          docker tag caitlyn-openapi-mcp:${SHA} ${REGISTRY}/${REPO}:stable
+
+          # Push all tags
+          docker push ${REGISTRY}/${REPO}:${VERSION}
+          docker push ${REGISTRY}/${REPO}:latest
+          docker push ${REGISTRY}/${REPO}:stable
+
+          echo "✅ Published Docker images: ${VERSION}, latest, stable"
+
   publish-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest
@@ -41,58 +99,10 @@ jobs:
         with:
           print-hash: true
 
-  publish-docker:
-    name: Tag and Publish Docker Image
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Extract version from tag
-        id: version
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          COMMIT_SHA=$(git rev-list -n 1 ${{ github.ref }})
-          echo "version=${VERSION#v}" >> $GITHUB_OUTPUT
-          echo "tag=${VERSION}" >> $GITHUB_OUTPUT
-          echo "sha=${COMMIT_SHA}" >> $GITHUB_OUTPUT
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ap-southeast-2
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Tag and push Docker image as release
-        run: |
-          REGISTRY=${{ steps.login-ecr.outputs.registry }}
-          REPO=caitlyn/mcp/openapi
-          VERSION=${{ steps.version.outputs.tag }}
-          SHA=${{ steps.version.outputs.sha }}
-
-          # Pull the commit SHA image built by CI
-          docker pull ${REGISTRY}/${REPO}:${SHA}
-
-          # Tag it with version and stable
-          docker tag ${REGISTRY}/${REPO}:${SHA} ${REGISTRY}/${REPO}:${VERSION}
-          docker tag ${REGISTRY}/${REPO}:${SHA} ${REGISTRY}/${REPO}:stable
-
-          # Push the tags
-          docker push ${REGISTRY}/${REPO}:${VERSION}
-          docker push ${REGISTRY}/${REPO}:stable
-
-          echo "✅ Published release images: ${VERSION}, stable"
-
   create-github-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [publish-pypi, publish-docker]
+    needs: [publish-pypi, build-and-publish-docker]
     permissions:
       contents: write
     steps:
