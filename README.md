@@ -103,7 +103,7 @@ Additional variables for non-AgentCore hosted deployment:
 
 - `AWS_DEFAULT_REGION`, `AWS_REGION`: AWS region
 - `AWS_ACCOUNT_ID`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`: AWS credentials
-- `AGENT_OBSERVABILITY_ENABLED=true`: Enable AgentCore observability
+- `ENABLE_TELEMETRY=true`: Enable OpenTelemetry observability
 
 **Instrumented operations:**
 

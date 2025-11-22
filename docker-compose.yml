@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   # For local development with stdio
@@ -33,7 +33,7 @@ services:
       - AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AGENT_OBSERVABILITY_ENABLED=${AGENT_OBSERVABILITY_ENABLED:-true}
+      - ENABLE_TELEMETRY=${ENABLE_TELEMETRY:-true}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
