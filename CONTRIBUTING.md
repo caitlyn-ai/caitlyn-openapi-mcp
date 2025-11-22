@@ -2,6 +2,80 @@
 
 Thank you for your interest in contributing to Caitlyn OpenAPI MCP! This document provides guidelines and instructions for contributing.
 
+## Commit Message Convention
+
+We use [Conventional Commits](https://www.conventionalcommits.org/) to automatically generate version numbers and changelogs. Please follow this format:
+
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+### Types
+
+- **feat**: A new feature (triggers minor version bump, e.g., 0.3.0 → 0.4.0)
+- **fix**: A bug fix (triggers patch version bump, e.g., 0.3.0 → 0.3.1)
+- **perf**: Performance improvement (triggers patch version bump)
+- **docs**: Documentation only changes (no version bump)
+- **style**: Code style changes (formatting, missing semicolons, etc., no version bump)
+- **refactor**: Code refactoring (no version bump)
+- **test**: Adding or updating tests (no version bump)
+- **chore**: Maintenance tasks (no version bump)
+- **ci**: CI/CD changes (no version bump)
+- **build**: Build system changes (no version bump)
+
+### Breaking Changes
+
+For breaking changes, add `BREAKING CHANGE:` in the commit body or add `!` after the type:
+
+```
+feat!: remove deprecated API endpoint
+
+BREAKING CHANGE: The /v1/old-endpoint has been removed. Use /v2/new-endpoint instead.
+```
+
+This triggers a major version bump (e.g., 0.3.0 → 1.0.0).
+
+### Examples
+
+```bash
+# New feature (minor bump)
+git commit -m "feat(tools): add semantic search for endpoints"
+
+# Bug fix (patch bump)
+git commit -m "fix(server): handle missing docs_url gracefully"
+
+# Performance improvement (patch bump)
+git commit -m "perf(vector-search): optimize embedding cache"
+
+# Documentation (no bump)
+git commit -m "docs: update installation instructions"
+
+# Breaking change (major bump)
+git commit -m "feat!: redesign resource URIs
+
+BREAKING CHANGE: Resource URIs changed from openapi://spec to openapi://api-specification"
+```
+
+## Releasing
+
+Releases are automated using Python Semantic Release:
+
+1. **Automatic Release**: When ready, manually trigger the "Release" workflow in GitHub Actions
+
+   - It analyzes commits since the last release
+   - Generates a new version number based on commit types
+   - Creates a git tag and GitHub release
+   - Generates a changelog
+   - Triggers the deployment pipeline
+
+2. **Manual Version Control**: The version is managed automatically in:
+   - `pyproject.toml`
+   - `src/openapi_mcp/__init__.py`
+
 ## Development Setup
 
 1. **Clone the repository**
@@ -171,6 +245,7 @@ git checkout -b feature/your-feature-name
 ```
 
 2. **Make your changes**
+
    - Write code following the style guidelines
    - Add tests for new functionality
    - Update documentation as needed
@@ -201,6 +276,7 @@ git commit -m "feat: add your feature description"
 ```
 
 Use conventional commit messages:
+
 - `feat:` for new features
 - `fix:` for bug fixes
 - `docs:` for documentation changes
@@ -232,6 +308,7 @@ Then create a pull request on GitHub.
 To add support for a new documentation renderer (e.g., Redoc, Swagger UI):
 
 1. **Update [docs_links.py](src/openapi_mcp/docs_links.py)**
+
    - Add a new function `_attach_<renderer>_links()`
    - Update `attach_docs_links()` to handle the new renderer
 
@@ -244,6 +321,7 @@ To add support for a new documentation renderer (e.g., Redoc, Swagger UI):
 ### Adding New MCP Resources
 
 1. **Update [resources.py](src/openapi_mcp/resources.py)**
+
    - Add new resource decorator in `register_resources()`
 
 2. **Add tests in [test_resources.py](tests/test_resources.py)**
@@ -253,6 +331,7 @@ To add support for a new documentation renderer (e.g., Redoc, Swagger UI):
 ### Adding New MCP Tools
 
 1. **Update [tools.py](src/openapi_mcp/tools.py)**
+
    - Add new tool decorator in `register_tools()`
 
 2. **Add tests** as appropriate
@@ -282,6 +361,7 @@ Releases are published to PyPI and follow semantic versioning:
 ### Versioning
 
 We use [Semantic Versioning](https://semver.org/):
+
 - **MAJOR**: Breaking changes
 - **MINOR**: New features, backward compatible
 - **PATCH**: Bug fixes, backward compatible
@@ -299,6 +379,7 @@ We are committed to providing a welcoming and inclusive experience for everyone.
 ### Our Standards
 
 **Positive behaviors include:**
+
 - Using welcoming and inclusive language
 - Being respectful of differing viewpoints and experiences
 - Gracefully accepting constructive criticism
@@ -308,6 +389,7 @@ We are committed to providing a welcoming and inclusive experience for everyone.
 - Acknowledging and learning from mistakes
 
 **Unacceptable behaviors include:**
+
 - Trolling, insulting/derogatory comments, and personal or political attacks
 - Public or private harassment
 - Publishing others' private information without explicit permission
@@ -340,12 +422,14 @@ Significant contributions may be highlighted in release notes and project docume
 By contributing to caitlyn-openapi-mcp, you agree that your contributions will be licensed under the [MIT License](LICENSE).
 
 You also certify that:
+
 1. Your contribution is your original work or you have the right to submit it
 2. You grant Caitlyn Team and recipients of this software a perpetual, worldwide, non-exclusive, royalty-free license to use your contribution
 
 ## Questions?
 
 If you have any questions about contributing, please:
+
 - Open a [GitHub Discussion](https://github.com/caitlyn-ai/caitlyn-openapi-mcp/discussions)
 - Review existing [Issues](https://github.com/caitlyn-ai/caitlyn-openapi-mcp/issues)
 - Check the [README](README.md) for project documentation

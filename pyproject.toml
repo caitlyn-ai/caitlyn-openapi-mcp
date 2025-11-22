@@ -45,6 +45,7 @@ dev = [
     "black>=23.0.0",
     "ruff>=0.1.0",
     "pyright>=1.1.0",
+    "python-semantic-release>=9.0.0",
 ]
 
 [project.urls]
@@ -156,3 +157,38 @@ exclude = [
     "build",
     "dist"
 ]
+
+# semantic-release
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+version_variables = ["src/openapi_mcp/__init__.py:__version__"]
+branch = "main"
+upload_to_vcs_release = true
+build_command = "pip install build && python -m build"
+major_on_zero = false
+commit_parser = "angular"
+
+[tool.semantic_release.changelog]
+template_dir = "templates"
+changelog_file = "CHANGELOG.md"
+exclude_commit_patterns = [
+    "^chore\\(release\\):",
+    "^Merge pull request",
+    "^Merge branch",
+]
+
+[tool.semantic_release.commit_parser_options]
+allowed_tags = [
+    "build",
+    "chore",
+    "ci",
+    "docs",
+    "feat",
+    "fix",
+    "perf",
+    "style",
+    "refactor",
+    "test",
+]
+minor_tags = ["feat"]
+patch_tags = ["fix", "perf"]
