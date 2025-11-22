@@ -37,6 +37,25 @@ services:
     networks:
       - otel
 
+  # MCP Server in streamable-http mode for testing with Inspector
+  mcp-server:
+    build: .
+    container_name: mcp-server-http
+    ports:
+      - "8000:8000"
+    environment:
+      - MCP_TRANSPORT=streamable-http
+      - OPENAPI_SPEC_URL=https://betty.getcaitlyn.ai/docs/openapi-v1.json
+      - DOCS_BASE_URL=https://betty.getcaitlyn.ai/api/docs
+      - SENTENCE_TRANSFORMERS_HOME=/app/models
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - ENABLE_TELEMETRY=true
+      - OTEL_SERVICE_NAME=caitlyn-openapi-mcp
+    networks:
+      - otel
+    depends_on:
+      - otel-collector
+
 networks:
   otel:
     driver: bridge

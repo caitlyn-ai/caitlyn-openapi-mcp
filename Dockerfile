@@ -65,5 +65,6 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD python -c "import sys; sys.exit(0)"
 
 # Run the server
-# Use opentelemetry-instrument for auto-instrumentation (AgentCore compatible)
-CMD ["opentelemetry-instrument", "caitlyn-openapi-mcp"]
+# Note: opentelemetry-instrument is only available in AWS ADOT environments
+# For local dev, use direct command. For AgentCore, ADOT auto-instruments at runtime.
+CMD ["caitlyn-openapi-mcp"]

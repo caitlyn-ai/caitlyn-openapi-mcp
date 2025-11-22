@@ -1,12 +1,13 @@
-.PHONY: help install install-dev setup-models dev dev-stop otel-up otel-down otel-logs test test-cov lint format type-check clean clean-models build docker-build docker-run
+.PHONY: help install install-dev setup-models dev dev-http dev-stop otel-up otel-down otel-logs test test-cov lint format type-check clean clean-models build docker-build docker-run
 
 help:
 	@echo "Available commands:"
 	@echo "  make install       - Install package dependencies"
 	@echo "  make install-dev   - Install package with dev dependencies"
 	@echo "  make setup-models  - Download sentence-transformers model to local cache"
-	@echo "  make dev           - Run MCP Inspector with OTEL collector for local development"
-	@echo "  make dev-stop      - Stop MCP Inspector and OTEL collector"
+	@echo "  make dev           - Run MCP Inspector with OTEL collector for local development (stdio)"
+	@echo "  make dev-http      - Run MCP server with OTEL in streamable-http mode (port 8000)"
+	@echo "  make dev-stop      - Stop dev server and OTEL collector"
 	@echo "  make otel-up       - Start OTEL collector and Jaeger (standalone)"
 	@echo "  make otel-down     - Stop OTEL collector and Jaeger"
 	@echo "  make otel-logs     - Show OTEL collector logs"
@@ -65,13 +66,25 @@ dev:
 		-e ENABLE_TELEMETRY="true" \
 		-- python -m openapi_mcp.server
 
+dev-http:
+	@echo "Starting OTEL Collector, Jaeger, and MCP server..."
+	@docker compose -f docker-compose.otel.yml up -d
+	@echo ""
+	@echo "Waiting for services to be ready..."
+	@sleep 3
+	@echo ""
+	@echo "✓ MCP Server: http://localhost:8000/mcp"
+	@echo "✓ Jaeger UI: http://localhost:16686"
+	@echo "✓ Starting MCP Inspector..."
+	@echo ""
+	@(sleep 3 && echo "Opening Jaeger UI..." && open http://localhost:16686 2>/dev/null || true) &
+	npx @modelcontextprotocol/inspector
+
 dev-stop:
 	@echo "Stopping MCP Inspector and server..."
 	@pkill -f "@modelcontextprotocol/inspector" 2>/dev/null || true
-	@pkill -f "python.*openapi_mcp.server" 2>/dev/null || true
-	@echo "✓ Stopped MCP Inspector processes"
-	@echo ""
-	@$(MAKE) otel-down
+	@docker compose -f docker-compose.otel.yml down
+	@echo "✓ Stopped all services"
 
 test:
 	pytest
