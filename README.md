@@ -83,6 +83,7 @@ open http://localhost:16686
 ```
 
 **General OTEL Configuration:**
+
 - `ENABLE_TELEMETRY`: Enable/disable telemetry (default: `"true"`)
 - `OTEL_SERVICE_NAME`: Service name for tracing (default: `"caitlyn-openapi-mcp"`)
 - `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLP endpoint for traces (e.g., `"http://localhost:4317"`)
@@ -92,17 +93,20 @@ open http://localhost:16686
 The Docker image includes AWS Distro for OpenTelemetry (ADOT) for native AgentCore integration. When deployed to AgentCore, traces are automatically exported to CloudWatch.
 
 Pre-configured environment variables (already set in Dockerfile):
+
 - `OTEL_PYTHON_DISTRO=aws_distro`
 - `OTEL_PYTHON_CONFIGURATOR=aws_configurator`
 - `OTEL_TRACES_EXPORTER=otlp`
 - `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`
 
 Additional variables for non-AgentCore hosted deployment:
+
 - `AWS_DEFAULT_REGION`, `AWS_REGION`: AWS region
 - `AWS_ACCOUNT_ID`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`: AWS credentials
 - `AGENT_OBSERVABILITY_ENABLED=true`: Enable AgentCore observability
 
 **Instrumented operations:**
+
 - OpenAPI spec loading (with granular cache/fetch/parse/extract spans)
 - Vector search (model loading, embedding generation, cache operations)
 - Semantic search queries (encoding, similarity computation, ranking)
@@ -189,14 +193,16 @@ See [Testing with MCP Inspector](#testing-with-mcp-inspector) for more details.
 Deploy as a containerized service with streamable-http transport and AWS Distro for OpenTelemetry (ADOT) for native observability.
 
 **Features:**
-- 🚀 **Fast cold-starts** - Embedding cache for ~10x faster initialization
-- 📊 **ADOT integration** - Native CloudWatch tracing via `opentelemetry-instrument`
-- 🔒 **Secure** - Non-root user, multi-stage builds, updated pip (CVE-2025-8869 fixed)
-- 📦 **Production-ready** - Pre-bundled model cache, health checks
+
+- 🚀 **Fast cold-starts** - Pre-cached embeddings for quick initialization
+- 📊 **ADOT integration** - Native CloudWatch tracing
+- 🔒 **Secure** - Non-root user, multi-stage builds
+- 📦 **Production-ready** - Health checks and resource optimization
 
 **Quick start:**
 
 1. Copy `.env.example` to `.env` and configure:
+
    ```bash
    cp .env.example .env
    # Edit .env with your OPENAPI_SPEC_URL and AWS credentials
@@ -208,6 +214,7 @@ Deploy as a containerized service with streamable-http transport and AWS Distro 
    ```
 
 **See full examples:**
+
 - [Dockerfile](Dockerfile) - Multi-stage build with ADOT auto-instrumentation
 - [docker-compose.yml](docker-compose.yml) - Complete service definitions
 - [.env.example](.env.example) - All configuration options
@@ -420,36 +427,28 @@ The installation automatically downloads the sentence-transformers model (~80MB)
 
 **Startup behavior:**
 
-- **Server starts instantly** (~100-200ms) - No blocking on spec or model loading
+- **Non-blocking startup**: Server starts immediately without waiting for spec or model loading
 - **Background loading**: OpenAPI spec and ML model load in parallel background threads
-- **First request handling**:
-  - If spec/model still loading, request waits for completion
-  - Typically completes before first request (spec: ~1-2s cached, model: ~1-2s cached)
-- **Semantic search ready in ~1-2 seconds** (cached) or ~5-10 seconds (first time)
-  - **Spec cache**: Resolved OpenAPI spec cached to disk (~instant subsequent loads)
-  - **Embedding cache**: Pre-computed embeddings cached per-API-spec (~instant loads)
-  - **First load of new API**: Downloads spec + generates embeddings (~5-10s)
-  - **Subsequent loads**: Loads from cache (~1-2s total) ✨ **~5-10x faster**
+- **First request handling**: Automatically waits for loading to complete if still in progress
 
 **Caching strategy:**
 
-- **OpenAPI specs**: Cached in `./models/cache/spec_*.pkl` (per-URL hash, gitignored)
-- **Model files**: Cached in `./models/` directory (gitignored)
-- **Embeddings**: Cached in `./models/cache/embeddings_*.pkl` (per-content hash, gitignored)
-- **First-time setup**: ~30 seconds to download model + fetch spec + generate embeddings
-- **Cold-start (cached)**: ~1-2 seconds to load everything from cache 🚀
-- **Cache invalidation**: Automatic when API spec content or URL changes
+- **OpenAPI specs**: Cached to disk for faster subsequent loads
+- **ML model files**: Downloaded once and cached locally
+- **Embeddings**: Pre-computed and cached per API specification
+- **Cache invalidation**: Automatic when API spec content changes
 - **Manual management**:
   - Download/update model: `make setup-models`
   - Clear all caches: `make clean-models`
 
-**Note:** Docker builds pre-download the model during image build, so containers start instantly with model already cached in memory.
+**Note:** Docker images include pre-downloaded models for instant container startup.
 
 ### Testing with MCP Inspector
 
 The [MCP Inspector](https://github.com/modelcontextprotocol/inspector) provides a web-based UI for testing your MCP server locally with full observability.
 
 **Prerequisites**:
+
 - Node.js installed (npx comes with Node.js)
 - Docker for OTEL Collector (optional but recommended)
 
@@ -460,6 +459,7 @@ make dev
 ```
 
 This launches:
+
 - **OTEL Collector** - Receives telemetry on localhost:4317
 - **Jaeger UI** - Visualize traces (auto-opens at http://localhost:16686)
 - **MCP Inspector** - Interactive testing interface
