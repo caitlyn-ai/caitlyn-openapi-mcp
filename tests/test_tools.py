@@ -81,9 +81,14 @@ class TestTools:
         """Test that tools can be registered without errors."""
         from mcp.server.fastmcp import FastMCP
 
+        # Create a simple index loader that returns our sample_index
+        class MockIndexLoader:
+            def get_index(self):
+                return sample_index
+
         mcp = FastMCP(name="test-server")
         # Should not raise any exceptions
-        register_tools(mcp, index=sample_index)
+        register_tools(mcp, index_loader=MockIndexLoader())
 
     # Note: Full integration tests with FastMCP would require running the server
     # and making actual MCP tool calls. These tests verify the basic structure.

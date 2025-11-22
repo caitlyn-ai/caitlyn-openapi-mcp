@@ -54,17 +54,17 @@ class TestAttachDocsLinks:
         base_url = "https://api.example.com/docs"
         attach_docs_links(sample_index, renderer="scalar", base_url=base_url)
 
-        # Check endpoint docs_url
+        # Check endpoint docs_url (includes api_prefix from spec title "Test API" + version "1.0.0" -> "test-api-v1")
         endpoint = sample_index.endpoints[0]
-        assert endpoint.docs_url == "https://api.example.com/docs#tag/users/get/api/v1/users"
+        assert endpoint.docs_url == "https://api.example.com/docs#test-api-v1/tag/users/get/api/v1/users"
 
-        # Check schema docs_urls
+        # Check schema docs_urls (includes api_prefix)
         assert "User" in sample_index.schema_docs_urls
-        assert sample_index.schema_docs_urls["User"] == "https://api.example.com/docs#schema/User"
+        assert sample_index.schema_docs_urls["User"] == "https://api.example.com/docs#test-api-v1/schema/User"
 
-        # Check security scheme docs_urls
+        # Check security scheme docs_urls (includes api_prefix)
         assert "bearerAuth" in sample_index.security_scheme_docs_urls
-        assert sample_index.security_scheme_docs_urls["bearerAuth"] == "https://api.example.com/docs#security/bearerAuth"
+        assert sample_index.security_scheme_docs_urls["bearerAuth"] == "https://api.example.com/docs#test-api-v1/security/bearerAuth"
 
     def test_attach_links_no_base_url(self, sample_index):
         """Test that no links are attached when base_url is None."""
@@ -84,8 +84,8 @@ class TestAttachDocsLinks:
         base_url = "https://api.example.com/docs"
         attach_docs_links(sample_index, renderer="scalar", base_url=base_url)
 
-        # Should use "default" tag
-        assert endpoint.docs_url == "https://api.example.com/docs#tag/default/get/api/v1/users"
+        # Should use "default" tag (includes api_prefix)
+        assert endpoint.docs_url == "https://api.example.com/docs#test-api-v1/tag/default/get/api/v1/users"
 
     def test_endpoint_with_special_characters(self, sample_index):
         """Test endpoint link generation with special characters in path."""
@@ -95,8 +95,8 @@ class TestAttachDocsLinks:
         base_url = "https://api.example.com/docs"
         attach_docs_links(sample_index, renderer="scalar", base_url=base_url)
 
-        # Should preserve {} and / but encode other characters
-        assert endpoint.docs_url == "https://api.example.com/docs#tag/users/get/api/v1/users/{userId}/posts"
+        # Should preserve {} and / but encode other characters (includes api_prefix)
+        assert endpoint.docs_url == "https://api.example.com/docs#test-api-v1/tag/users/get/api/v1/users/{userId}/posts"
 
     def test_post_method(self, sample_index):
         """Test endpoint link generation for POST method."""
@@ -106,7 +106,7 @@ class TestAttachDocsLinks:
         base_url = "https://api.example.com/docs"
         attach_docs_links(sample_index, renderer="scalar", base_url=base_url)
 
-        assert endpoint.docs_url == "https://api.example.com/docs#tag/users/post/api/v1/users"
+        assert endpoint.docs_url == "https://api.example.com/docs#test-api-v1/tag/users/post/api/v1/users"
 
     def test_schema_with_special_characters(self, sample_index):
         """Test schema link generation with special characters in name."""
@@ -115,6 +115,6 @@ class TestAttachDocsLinks:
         base_url = "https://api.example.com/docs"
         attach_docs_links(sample_index, renderer="scalar", base_url=base_url)
 
-        # Should preserve - but encode other special characters
+        # Should preserve - but encode other special characters (includes api_prefix)
         assert "User-Profile" in sample_index.schema_docs_urls
-        assert sample_index.schema_docs_urls["User-Profile"] == "https://api.example.com/docs#schema/User-Profile"
+        assert sample_index.schema_docs_urls["User-Profile"] == "https://api.example.com/docs#test-api-v1/schema/User-Profile"

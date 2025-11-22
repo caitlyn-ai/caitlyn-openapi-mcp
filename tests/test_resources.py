@@ -62,17 +62,27 @@ class TestResources:
         """Test that resources can be registered without errors."""
         from mcp.server.fastmcp import FastMCP
 
+        # Create a simple index loader that returns our sample_index
+        class MockIndexLoader:
+            def get_index(self):
+                return sample_index
+
         mcp = FastMCP(name="test-server")
         # Should not raise any exceptions
-        register_resources(mcp, index=sample_index)
+        register_resources(mcp, index_loader=MockIndexLoader())
 
     def test_full_spec_is_valid_json(self, sample_index):
         """Test that the full spec resource returns valid JSON."""
         # The resource should return a JSON string that can be parsed
         from mcp.server.fastmcp import FastMCP
 
+        # Create a simple index loader that returns our sample_index
+        class MockIndexLoader:
+            def get_index(self):
+                return sample_index
+
         mcp = FastMCP(name="test-server")
-        register_resources(mcp, index=sample_index)
+        register_resources(mcp, index_loader=MockIndexLoader())
 
         # Verify the index.raw can be serialized to JSON
         spec_json = json.dumps(sample_index.raw, indent=2)
