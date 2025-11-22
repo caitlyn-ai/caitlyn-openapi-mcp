@@ -1,8 +1,9 @@
 """Tests for openapi_loader module."""
 
-import pytest
-from unittest.mock import MagicMock, patch, mock_open
 from contextlib import contextmanager
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from openapi_mcp.openapi_loader import load_openapi_spec_from_url
 

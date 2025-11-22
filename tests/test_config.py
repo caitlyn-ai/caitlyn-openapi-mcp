@@ -1,7 +1,5 @@
 """Tests for config module."""
 
-import os
-
 import pytest
 
 from openapi_mcp.config import AppConfig, load_config
