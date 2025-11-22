@@ -6,7 +6,8 @@ We release patches for security vulnerabilities for the following versions:
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
+| 0.3.x   | :white_check_mark: |
+| < 0.3.0 | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -31,21 +32,21 @@ Please include the following information in your report:
 
 ### What to Expect
 
-1. **Acknowledgment**: We will acknowledge receipt of your vulnerability report within 48 hours
-2. **Assessment**: We will investigate and assess the vulnerability within 5 business days
-3. **Updates**: We will keep you informed about our progress in addressing the vulnerability
-4. **Resolution**: We will work to fix confirmed vulnerabilities and release a patch as quickly as possible
+1. **Acknowledgment**: We will acknowledge receipt of your vulnerability report as soon as possible
+2. **Assessment**: We will investigate and assess the severity of the vulnerability
+3. **Updates**: We will keep you informed about our progress
+4. **Resolution**: We will work to fix confirmed vulnerabilities and release a patch
 5. **Credit**: With your permission, we will credit you in the security advisory and release notes
 
 ### Disclosure Timeline
 
-- **Day 0**: You report the vulnerability
-- **Day 1-2**: We acknowledge receipt
-- **Day 3-7**: We assess and validate the vulnerability
-- **Day 8-30**: We develop and test a fix
-- **Day 30+**: We release a patch and publish a security advisory
+We aim to address security vulnerabilities promptly, though response times may vary as this is an open-source project maintained by volunteers. We request that you:
 
-If the vulnerability is exceptionally critical, we will expedite this timeline.
+- Allow reasonable time for us to investigate and patch the vulnerability before public disclosure
+- Coordinate with us on the disclosure timeline
+- Avoid publicizing the vulnerability until a fix is available
+
+For critical vulnerabilities, we will prioritize a rapid response.
 
 ## Security Best Practices
 
@@ -63,6 +64,7 @@ When using caitlyn-openapi-mcp, we recommend:
 ### OpenAPI Spec Loading
 
 This server loads OpenAPI specifications from URLs specified in environment variables. Ensure:
+
 - The URL is from a trusted source
 - The URL uses HTTPS
 - You have reviewed the OpenAPI spec for any sensitive information
@@ -75,6 +77,7 @@ This server loads OpenAPI specifications from URLs specified in environment vari
 ## Security Updates
 
 Security updates will be published as:
+
 - GitHub Security Advisories
 - New releases on PyPI
 - Notifications in the project README
@@ -88,6 +91,7 @@ We do not currently offer a bug bounty program, but we deeply appreciate respons
 ## Contact
 
 For security-related questions or concerns:
+
 - **Email**: security@caitlyn.ai
 - **General Issues**: For non-security bugs, please use [GitHub Issues](https://github.com/caitlyn-ai/caitlyn-openapi-mcp/issues)
 
