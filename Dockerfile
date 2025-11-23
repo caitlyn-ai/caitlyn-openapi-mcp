@@ -10,20 +10,37 @@ RUN apt-get update && \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy project files
+# Upgrade pip first (this rarely changes, so it's cached)
+RUN pip install --no-cache-dir --upgrade "pip>=25.3"
+
+# Copy only pyproject.toml for dependency installation
+# Don't copy README.md here - documentation changes shouldn't invalidate dependency cache
 COPY pyproject.toml .
+
+# Install dependencies only (without source code)
+# This layer will be cached unless dependencies in pyproject.toml change
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir build && \
+    pip wheel --no-cache-dir --wheel-dir=/app/wheels . && \
+    pip install --no-cache-dir --find-links=/app/wheels --no-index caitlyn-openapi-mcp || \
+    pip install --no-cache-dir .
+
+# Pre-download sentence-transformers model BEFORE copying source code
+# This ensures model cache persists even when source code changes
+# Copy only the download script needed for this step
+ENV SENTENCE_TRANSFORMERS_HOME=/app/models
+COPY scripts/download_model.py scripts/
+RUN --mount=type=cache,target=/root/.cache/huggingface \
+    python scripts/download_model.py
+
+# Now copy remaining source code (this changes frequently but won't invalidate model or dependency cache)
 COPY README.md .
 COPY src/ src/
 COPY scripts/ scripts/
 
-# Install package and dependencies
-# Upgrade pip to 25.3+ to fix CVE-2025-8869
-RUN pip install --no-cache-dir --upgrade "pip>=25.3" && \
-    pip install --no-cache-dir .
-
-# Pre-download sentence-transformers model to avoid runtime downloads
-ENV SENTENCE_TRANSFORMERS_HOME=/app/models
-RUN python scripts/download_model.py
+# Reinstall to include source code
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir --force-reinstall --no-deps .
 
 # Production stage
 FROM python:3.11-slim
