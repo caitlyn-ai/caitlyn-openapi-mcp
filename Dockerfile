@@ -5,7 +5,7 @@ FROM python:3.11-slim AS builder
 WORKDIR /app
 
 # Upgrade pip first (this rarely changes, so it's cached)
-RUN pip install --no-cache-dir --upgrade "pip>=25.3"
+RUN pip install --no-cache-dir --upgrade "pip>=25.3" --root-user-action=ignore
 
 # Copy pre-built wheel from CI build-package job
 # The wheel is a self-contained package with all metadata
@@ -14,7 +14,7 @@ COPY dist/*.whl /tmp/
 # Install the wheel (this installs only production dependencies, not dev dependencies)
 # Using --no-deps would skip dependencies, but we want runtime deps installed
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir /tmp/*.whl
+    pip install --no-cache-dir /tmp/*.whl --root-user-action=ignore
 
 # Pre-download sentence-transformers model
 # Copy only the download script to avoid invalidating this layer on source changes
@@ -29,7 +29,7 @@ FROM python:3.11-slim AS dev
 WORKDIR /app
 
 # Upgrade pip
-RUN pip install --no-cache-dir --upgrade "pip>=25.3"
+RUN pip install --no-cache-dir --upgrade "pip>=25.3" --root-user-action=ignore
 
 # Copy source code and dependencies for editable install
 COPY pyproject.toml README.md ./
@@ -38,7 +38,7 @@ COPY scripts/ scripts/
 
 # Install in editable mode so volume mounts work
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir -e .
+    pip install --no-cache-dir -e . --root-user-action=ignore
 
 ENV SENTENCE_TRANSFORMERS_HOME=/app/models
 ENV PYTHONUNBUFFERED=1
