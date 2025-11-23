@@ -78,12 +78,20 @@ def setup_telemetry(service_name: str = "caitlyn-openapi-mcp") -> None:
     Initialize OpenTelemetry tracing and logging.
 
     Configured via environment variables:
+    - AGENTCORE_RUNTIME: If "true", skip manual OTEL setup (ADOT auto-instruments)
     - OTEL_EXPORTER_OTLP_ENDPOINT: OTLP endpoint (default: http://localhost:4317)
     - OTEL_SERVICE_NAME: Service name (default: caitlyn-openapi-mcp)
     - OTEL_FILE_EXPORT: Path to export spans as JSON (default: ./mcp-spans.json)
     - ENABLE_TELEMETRY: Enable/disable telemetry (default: true)
     """
     global _tracer
+
+    # Check if running in AgentCore runtime (ADOT auto-instruments)
+    if os.environ.get("AGENTCORE_RUNTIME", "false").lower() == "true":
+        logger.info("Running in AgentCore runtime - ADOT will auto-instrument (skipping manual OTEL setup)")
+        # Still set up a basic tracer for our code to use
+        _tracer = trace.get_tracer(__name__)
+        return
 
     # Check if telemetry is disabled
     if os.environ.get("ENABLE_TELEMETRY", "true").lower() == "false":

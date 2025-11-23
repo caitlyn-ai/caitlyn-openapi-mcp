@@ -21,7 +21,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "mcp>=1.7.1",
+    "mcp>=1.17.1",  # Updated for 2025-06-18 protocol support
     "prance>=0.22.0",
     "openapi-core>=0.19.0",
     "openapi-spec-validator>=0.7.1",
@@ -32,7 +32,7 @@ dependencies = [
     "opentelemetry-api>=1.20.0",
     "opentelemetry-sdk>=1.20.0",
     "opentelemetry-exporter-otlp>=1.20.0",
-    "aws-opentelemetry-distro>=0.10.0",
+    "aws-opentelemetry-distro>=0.10.0",  # Provides opentelemetry-instrument command
     "boto3>=1.28.0",
 ]
 

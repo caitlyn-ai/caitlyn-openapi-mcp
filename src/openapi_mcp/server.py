@@ -305,21 +305,40 @@ def main() -> None:
         handlers=[logging.StreamHandler(sys.stderr)],
     )
 
+    logger.info("=" * 80)
+    logger.info("MCP Server Starting")
+    logger.info("=" * 80)
+
+    # Log environment info for debugging
+    import os
+    logger.info(f"Python version: {sys.version}")
+    logger.info(f"MCP_TRANSPORT: {os.environ.get('MCP_TRANSPORT', 'not set')}")
+    logger.info(f"AGENTCORE_RUNTIME: {os.environ.get('AGENTCORE_RUNTIME', 'not set')}")
+    logger.info(f"ENABLE_TELEMETRY: {os.environ.get('ENABLE_TELEMETRY', 'not set')}")
+    logger.info(f"OTEL_PYTHON_DISTRO: {os.environ.get('OTEL_PYTHON_DISTRO', 'not set')}")
+
     # Initialize OpenTelemetry
+    logger.info("Initializing OpenTelemetry...")
     setup_telemetry()
+    logger.info("✓ OpenTelemetry initialized")
 
     # Now that OTEL is set up, use it to trace startup
     from .telemetry import trace_operation
 
+    logger.info("Loading configuration...")
     cfg = load_config()
+    logger.info(f"✓ Configuration loaded - Transport: {cfg.transport}")
 
     # Single top-level trace for entire server initialization
+    logger.info("Creating MCP server...")
     with trace_operation("mcp.server.startup", {"transport": cfg.transport}):
         mcp = create_server()
+        logger.info("✓ MCP server created")
         logger.info("🚀 Starting MCP transport - ready for connections")
 
     # Run transport outside the initialization trace
     # This allows protocol requests to be separate traces
+    logger.info(f"Running MCP server with transport: {cfg.transport}")
     mcp.run(transport=cfg.transport)  # type: ignore[arg-type]
 
 

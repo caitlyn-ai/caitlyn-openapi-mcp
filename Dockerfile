@@ -52,10 +52,15 @@ ENV MCP_TRANSPORT="streamable-http"
 ENV SENTENCE_TRANSFORMERS_HOME=/app/models
 
 # OpenTelemetry configuration for AgentCore
+# These are auto-configured by AgentCore runtime, but we set them for consistency
 ENV OTEL_PYTHON_DISTRO=aws_distro
 ENV OTEL_PYTHON_CONFIGURATOR=aws_configurator
 ENV OTEL_TRACES_EXPORTER=otlp
 ENV OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+# Set log group for AgentCore (will be overridden at runtime with actual runtime ID)
+ENV OTEL_EXPORTER_OTLP_LOGS_HEADERS="x-aws-log-group=/aws/vendedlogs/bedrock-agentcore/runtime/APPLICATION_LOGS/caitlyn_mcp_openapi-63cltH8aii"
+# Disable manual OTEL setup in code when running in AgentCore
+ENV AGENTCORE_RUNTIME=true
 
 # Expose port for streamable HTTP
 EXPOSE 8000
@@ -64,7 +69,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD python -c "import sys; sys.exit(0)"
 
-# Run the server
-# Note: opentelemetry-instrument is only available in AWS ADOT environments
-# For local dev, use direct command. For AgentCore, ADOT auto-instruments at runtime.
-CMD ["caitlyn-openapi-mcp"]
+# Run the server with ADOT auto-instrumentation
+# The opentelemetry-instrument command is provided by aws-opentelemetry-distro package
+# For local dev without ADOT, set AGENTCORE_RUNTIME=false to use manual OTEL setup
+CMD ["sh", "-c", "echo 'Container starting...' && echo 'MCP_TRANSPORT='$MCP_TRANSPORT && echo 'AGENTCORE_RUNTIME='$AGENTCORE_RUNTIME && opentelemetry-instrument caitlyn-openapi-mcp"]
