@@ -2,6 +2,37 @@
 
 <!-- version list -->
 
+## v1.0.1 (2025-11-23)
+
+### Bug Fixes
+
+- Update mcp version for 2025-06-18 protocol support and otel bootstrap when running in agentcore
+  ([`67e32c0`](https://github.com/caitlyn-ai/caitlyn-openapi-mcp/commit/67e32c05b56cf55c17df3e8897a2972c6f60eabe))
+
+- **ci**: Update permissions for build docker job and upgrade upload-sarif action version
+  ([`b66d6c6`](https://github.com/caitlyn-ai/caitlyn-openapi-mcp/commit/b66d6c69c7e7af24eaa2b3c8a3fc76cb50010e37))
+
+### Chores
+
+- Update observability configuration to use ENABLE_TELEMETRY instead of AGENT_OBSERVABILITY_ENABLED
+  ([`cdfe43e`](https://github.com/caitlyn-ai/caitlyn-openapi-mcp/commit/cdfe43e9ff88564e13e488974fc5d54a432e644c))
+
+- **ci**: Improve docker build caching layers for faster container builds
+  ([`ed3eaf0`](https://github.com/caitlyn-ai/caitlyn-openapi-mcp/commit/ed3eaf045d9f4a0574ee6edd50ef7269b126099f))
+
+- **ci**: Update Dockerfile and CI to streamline package build and add entrypoint script
+  ([`e679a6c`](https://github.com/caitlyn-ai/caitlyn-openapi-mcp/commit/e679a6c5267930a9c1c894b2be0c9796551430cb))
+
+- **dev**: Add development environment with hot reloading and OpenTelemetry support
+  ([`409fd5a`](https://github.com/caitlyn-ai/caitlyn-openapi-mcp/commit/409fd5a3a4c02241f2348221697f645034f65b1d))
+
+- **dev**: Update docker compose setup to test streamable http
+  ([`fce8480`](https://github.com/caitlyn-ai/caitlyn-openapi-mcp/commit/fce84807fa0bb8c6ed6d0530d8f3fcfcdaf44be0))
+
+- **lint**: Cleaned lint issues
+  ([`e83dad2`](https://github.com/caitlyn-ai/caitlyn-openapi-mcp/commit/e83dad2cb09335aca432fe764aed02147fd8536d))
+
+
 ## v1.0.0 (2025-11-22)
 
 ### Chores
