@@ -351,7 +351,6 @@ def main() -> None:
     # Run transport outside the initialization trace
     # This allows protocol requests to be separate traces
     logger.info(f"Running MCP server with transport: {cfg.transport}")
-    # Don't pass stateless_http to run() - it's set in constructor
     mcp.run(transport=cfg.transport)  # type: ignore[arg-type]
 
 

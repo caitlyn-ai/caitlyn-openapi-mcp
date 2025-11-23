@@ -98,7 +98,12 @@ def _attach_scalar_links(index: OpenApiIndex, *, base_url: str) -> None:
                 else:
                     version_slug = _slugify(version)
 
-                api_prefix = f"{title_slug}-{version_slug}"
+                # Check if title already ends with the version to avoid duplication
+                # e.g., "Caitlyn API v1" with version "v1" should become "caitlyn-api-v1", not "caitlyn-api-v1-v1"
+                if title_slug.endswith(f"-{version_slug}"):
+                    api_prefix = title_slug
+                else:
+                    api_prefix = f"{title_slug}-{version_slug}"
             else:
                 api_prefix = title_slug
 
