@@ -4,43 +4,24 @@ FROM python:3.11-slim AS builder
 # Set working directory
 WORKDIR /app
 
-# Install build dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
 # Upgrade pip first (this rarely changes, so it's cached)
 RUN pip install --no-cache-dir --upgrade "pip>=25.3"
 
-# Copy only pyproject.toml for dependency installation
-# Don't copy README.md here - documentation changes shouldn't invalidate dependency cache
-COPY pyproject.toml .
+# Copy pre-built wheel from CI build-package job
+# The wheel is a self-contained package with all metadata
+COPY dist/*.whl /tmp/
 
-# Install dependencies only (without source code)
-# This layer will be cached unless dependencies in pyproject.toml change
+# Install the wheel (this installs only production dependencies, not dev dependencies)
+# Using --no-deps would skip dependencies, but we want runtime deps installed
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir build && \
-    pip wheel --no-cache-dir --wheel-dir=/app/wheels . && \
-    pip install --no-cache-dir --find-links=/app/wheels --no-index caitlyn-openapi-mcp || \
-    pip install --no-cache-dir .
+    pip install --no-cache-dir /tmp/*.whl
 
-# Pre-download sentence-transformers model BEFORE copying source code
-# This ensures model cache persists even when source code changes
-# Copy only the download script needed for this step
+# Pre-download sentence-transformers model
+# Copy only the download script to avoid invalidating this layer on source changes
 ENV SENTENCE_TRANSFORMERS_HOME=/app/models
 COPY scripts/download_model.py scripts/
 RUN --mount=type=cache,target=/root/.cache/huggingface \
     python scripts/download_model.py
-
-# Now copy remaining source code (this changes frequently but won't invalidate model or dependency cache)
-COPY README.md .
-COPY src/ src/
-COPY scripts/ scripts/
-
-# Reinstall to include source code
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir --force-reinstall --no-deps .
 
 # Production stage
 FROM python:3.11-slim
@@ -54,6 +35,10 @@ COPY --from=builder /usr/local/bin/caitlyn-openapi-mcp /usr/local/bin/caitlyn-op
 
 # Copy pre-downloaded model cache
 COPY --from=builder /app/models /app/models
+
+# Copy entrypoint script
+COPY --from=builder /app/scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Create non-root user
 RUN useradd -m -u 1000 mcp && \
@@ -89,4 +74,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # Run the server with ADOT auto-instrumentation
 # The opentelemetry-instrument command is provided by aws-opentelemetry-distro package
 # For local dev without ADOT, set AGENTCORE_RUNTIME=false to use manual OTEL setup
-CMD ["sh", "-c", "echo 'Container starting...' && echo 'MCP_TRANSPORT='$MCP_TRANSPORT && echo 'AGENTCORE_RUNTIME='$AGENTCORE_RUNTIME && opentelemetry-instrument caitlyn-openapi-mcp"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
