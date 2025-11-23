@@ -1,73 +1,34 @@
 receivers:
-  # OTLP receiver for traces and logs
   otlp:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
-      http:
-        endpoint: 0.0.0.0:4318
 
 processors:
-  # Batch processor for better performance
   batch:
-    timeout: 5s
-    send_batch_size: 512
-    send_batch_max_size: 1024
-
-  # Add resource attributes
-  resource:
-    attributes:
-      - key: service.name
-        value: caitlyn-openapi-mcp
-        action: upsert
-      - key: deployment.environment
-        value: development
-        action: upsert
-
-  # Memory limiter to prevent OOM
-  memory_limiter:
-    check_interval: 1s
-    limit_mib: 512
-    spike_limit_mib: 128
 
 exporters:
-  # Export to Jaeger for visualization
   otlp/jaeger:
     endpoint: jaeger:4317
     tls:
       insecure: true
-
-  # Export to file for debugging (spans only)
-  file:
-    path: /otel-data/traces.json
-    rotation:
-      max_megabytes: 10
-      max_backups: 3
-
-  # Logging exporter for debugging
+  
   logging:
     loglevel: info
-    sampling_initial: 5
-    sampling_thereafter: 200
 
 service:
   pipelines:
-    # Traces pipeline
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resource, batch]
-      exporters: [otlp/jaeger, file, logging]
-
-    # Logs pipeline
+      processors: [batch]
+      exporters: [otlp/jaeger]
+    
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, resource, batch]
-      exporters: [otlp/jaeger, logging]
-
-  extensions: []
-
-  telemetry:
-    logs:
-      level: info
+      processors: [batch]
+      exporters: [logging]
+    
     metrics:
-      address: 0.0.0.0:8888
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [logging]

@@ -1,39 +1,26 @@
-version: "3.8"
-
 services:
-  # For local development with stdio
-  openapi-mcp-dev:
+  # Production MCP server
+  openapi-mcp:
     build: .
-    container_name: caitlyn-openapi-mcp-dev
-    environment:
-      - OPENAPI_SPEC_URL=${OPENAPI_SPEC_URL}
-      - DOCS_RENDERER=${DOCS_RENDERER:-scalar}
-      - DOCS_BASE_URL=${DOCS_BASE_URL}
-      - MCP_TRANSPORT=stdio
-    restart: unless-stopped
-
-  # For Bedrock AgentCore deployment with streamable-http
-  openapi-mcp-bedrock:
-    build: .
-    container_name: caitlyn-openapi-mcp-bedrock
+    container_name: caitlyn-openapi-mcp
     ports:
       - "8000:8000"
     environment:
       # MCP Configuration
-      - OPENAPI_SPEC_URL=${OPENAPI_SPEC_URL}
+      - OPENAPI_SPEC_URL=${OPENAPI_SPEC_URL:-https://betty.getcaitlyn.ai/docs/openapi-v1.json}
       - DOCS_RENDERER=${DOCS_RENDERER:-scalar}
-      - DOCS_BASE_URL=${DOCS_BASE_URL}
-      - MCP_TRANSPORT=streamable-http
-      # OpenTelemetry (ADOT pre-configured in Dockerfile)
+      - DOCS_BASE_URL=${DOCS_BASE_URL:-https://betty.getcaitlyn.ai/api/docs}
+      - MCP_TRANSPORT=${MCP_TRANSPORT:-streamable-http}
+      # OpenTelemetry (optional)
       - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-caitlyn-openapi-mcp}
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
-      # AWS Credentials (for non-AgentCore hosted deployments)
+      - ENABLE_TELEMETRY=${ENABLE_TELEMETRY:-false}
+      # AWS Credentials (if needed)
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
       - AWS_REGION=${AWS_REGION}
       - AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - ENABLE_TELEMETRY=${ENABLE_TELEMETRY:-true}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]

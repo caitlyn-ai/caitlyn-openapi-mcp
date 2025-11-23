@@ -1,5 +1,4 @@
 services:
-  # OpenTelemetry Collector
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.91.0
     container_name: otel-collector
@@ -8,55 +7,46 @@ services:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
       - ./otel-data:/otel-data
     ports:
-      # OTLP gRPC receiver
       - "4317:4317"
-      # OTLP HTTP receiver
-      - "4318:4318"
-      # Health check endpoint
-      - "13133:13133"
-      # Prometheus metrics
-      - "8888:8888"
     networks:
       - otel
 
-  # Jaeger - Distributed tracing UI
   jaeger:
     image: jaegertracing/all-in-one:1.52
     container_name: jaeger
     environment:
       - COLLECTOR_OTLP_ENABLED=true
     ports:
-      # Jaeger UI
       - "16686:16686"
-      # OTLP gRPC receiver (used by collector)
       - "4319:4317"
-      # Jaeger Thrift receiver
-      - "14268:14268"
-      # Health check
-      - "14269:14269"
     networks:
       - otel
 
-  # MCP Server in streamable-http mode for testing with Inspector
-  mcp-server:
-    build: .
-    container_name: mcp-server-http
+  mcp-server-dev:
+    build:
+      context: .
+      target: dev
+    container_name: mcp-server-dev
     ports:
       - "8000:8000"
+    volumes:
+      - ./src:/app/src:ro
+      - ./models:/app/models
     environment:
       - MCP_TRANSPORT=streamable-http
       - OPENAPI_SPEC_URL=https://betty.getcaitlyn.ai/docs/openapi-v1.json
       - DOCS_BASE_URL=https://betty.getcaitlyn.ai/api/docs
       - SENTENCE_TRANSFORMERS_HOME=/app/models
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - ENABLE_TELEMETRY=true
-      - OTEL_SERVICE_NAME=caitlyn-openapi-mcp
-      # For local dev, disable AgentCore mode to use manual OTEL setup
+      - OTEL_SERVICE_NAME=caitlyn-openapi-mcp-dev
       - AGENTCORE_RUNTIME=false
     networks:
       - otel
     depends_on:
       - otel-collector
+      - jaeger
 
 networks:
   otel:

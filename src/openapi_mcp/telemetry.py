@@ -12,9 +12,12 @@ from typing import Any
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter, SpanExportResult
@@ -128,6 +131,16 @@ def setup_telemetry(service_name: str = "caitlyn-openapi-mcp") -> None:
 
         # Get tracer instance
         _tracer = trace.get_tracer(__name__)
+
+        # Set up metrics with gRPC exporter (if OTLP endpoint configured)
+        if otlp_endpoint:
+            metric_exporter = OTLPMetricExporter(endpoint=otlp_endpoint, insecure=True)
+            metric_reader = PeriodicExportingMetricReader(metric_exporter, export_interval_millis=60000)
+            meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
+            from opentelemetry import metrics
+
+            metrics.set_meter_provider(meter_provider)
+            logger.info("✓ OpenTelemetry metrics configured with gRPC")
 
         # Set up logging integration
         logger_provider = LoggerProvider(resource=resource)

@@ -23,6 +23,40 @@ COPY scripts/download_model.py scripts/
 RUN --mount=type=cache,target=/root/.cache/huggingface \
     python scripts/download_model.py
 
+# Development stage with hot reloading support
+FROM python:3.11-slim AS dev
+
+WORKDIR /app
+
+# Upgrade pip
+RUN pip install --no-cache-dir --upgrade "pip>=25.3"
+
+# Copy source code and dependencies for editable install
+COPY pyproject.toml README.md ./
+COPY src/ src/
+COPY scripts/ scripts/
+
+# Install in editable mode so volume mounts work
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir -e .
+
+ENV SENTENCE_TRANSFORMERS_HOME=/app/models
+ENV PYTHONUNBUFFERED=1
+
+# Copy entrypoint script
+COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Create non-root user
+RUN useradd -m -u 1000 mcp && \
+    chown -R mcp:mcp /app
+
+USER mcp
+
+EXPOSE 8000
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
 # Production stage
 FROM python:3.11-slim
 
@@ -36,8 +70,8 @@ COPY --from=builder /usr/local/bin/caitlyn-openapi-mcp /usr/local/bin/caitlyn-op
 # Copy pre-downloaded model cache
 COPY --from=builder /app/models /app/models
 
-# Copy entrypoint script
-COPY --from=builder /app/scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
+# Copy entrypoint script directly (not from builder)
+COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Create non-root user
