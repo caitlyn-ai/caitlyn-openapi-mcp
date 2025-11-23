@@ -311,6 +311,7 @@ def main() -> None:
 
     # Log environment info for debugging
     import os
+
     logger.info(f"Python version: {sys.version}")
     logger.info(f"MCP_TRANSPORT: {os.environ.get('MCP_TRANSPORT', 'not set')}")
     logger.info(f"AGENTCORE_RUNTIME: {os.environ.get('AGENTCORE_RUNTIME', 'not set')}")
