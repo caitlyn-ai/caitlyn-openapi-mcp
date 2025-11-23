@@ -85,14 +85,19 @@ class IndexLoader:
 
     def get_index(self) -> OpenApiIndex:
         """Get the loaded index, waiting if necessary."""
-        # If not loaded yet, wait for the background thread
+        # If not loaded yet, wait for the background thread (with timeout)
         if not self._loaded and self._load_thread:
             logger.info("Waiting for OpenAPI spec to finish loading...")
-            self._load_thread.join()
+            self._load_thread.join(timeout=30.0)  # 30 second timeout
+
+            # Check if thread is still alive after timeout
+            if self._load_thread.is_alive():
+                logger.error("OpenAPI spec loading timed out after 30 seconds")
+                raise RuntimeError("OpenAPI spec loading timed out - spec may be too large or URL unreachable")
 
         with self._lock:
             if self._index is None:
-                raise RuntimeError("OpenAPI index failed to load")
+                raise RuntimeError("OpenAPI index failed to load - check logs for errors during spec loading")
             return self._index
 
 
@@ -121,23 +126,37 @@ def create_server() -> FastMCP:
         Configured FastMCP server instance
     """
     cfg = load_config()
-    # For AgentCore compatibility, use stateless_http=True when using streamable-http transport
+    # For AgentCore, must pass stateless_http=True to constructor (not to run())
+    # This matches the working AWS examples
     is_stateless = cfg.transport == "streamable-http"
     mcp = FastMCP(name="caitlyn-openapi-mcp", host="0.0.0.0", port=8000, stateless_http=is_stateless)
 
     # Start loading OpenAPI spec in background (non-blocking)
-    _index_loader.start_loading_background(
-        spec_url=cfg.spec_url,
-        docs_renderer=cfg.docs_renderer,
-        docs_base_url=cfg.docs_base_url,
-    )
+    logger.info(f"Starting background load of OpenAPI spec from {cfg.spec_url}")
+    try:
+        _index_loader.start_loading_background(
+            spec_url=cfg.spec_url,
+            docs_renderer=cfg.docs_renderer,
+            docs_base_url=cfg.docs_base_url,
+        )
+        logger.info("✓ Background loading started successfully")
+    except Exception as e:
+        logger.error(f"Failed to start background loading: {e}", exc_info=True)
+        raise
 
     # Register resources and tools - they will wait for index when called
+    logger.info("Registering MCP resources...")
     register_resources(mcp, index_loader=_index_loader)
+    logger.info("✓ Resources registered")
+
+    logger.info("Registering MCP tools...")
     register_tools(mcp, index_loader=_index_loader)
+    logger.info("✓ Tools registered")
 
     # Add request timing instrumentation
+    logger.info("Adding request timing instrumentation...")
     _add_request_timing_instrumentation(mcp)
+    logger.info("✓ Instrumentation added")
 
     logger.info("✓ Server ready (spec loading in background)")
 
@@ -199,8 +218,6 @@ def _add_request_timing_instrumentation(mcp: FastMCP) -> None:
             return result
 
     mcp.list_tools = timed_list_tools
-    # Re-register the wrapped handler with the underlying MCP server
-    mcp._mcp_server.list_tools()(timed_list_tools)
 
     # Wrap list_resources to add OTEL span
     original_list_resources = mcp.list_resources
@@ -223,8 +240,6 @@ def _add_request_timing_instrumentation(mcp: FastMCP) -> None:
             return result
 
     mcp.list_resources = timed_list_resources
-    # Re-register the wrapped handler with the underlying MCP server
-    mcp._mcp_server.list_resources()(timed_list_resources)
 
     # Wrap read_resource to add OTEL span
     original_read_resource = mcp.read_resource
@@ -253,8 +268,6 @@ def _add_request_timing_instrumentation(mcp: FastMCP) -> None:
             return result
 
     mcp.read_resource = timed_read_resource  # type: ignore[assignment]
-    # Re-register the wrapped handler with the underlying MCP server
-    mcp._mcp_server.read_resource()(timed_read_resource)  # type: ignore[arg-type]
 
     # Wrap call_tool to add OTEL span
     original_call_tool = mcp.call_tool
@@ -284,8 +297,6 @@ def _add_request_timing_instrumentation(mcp: FastMCP) -> None:
             return result
 
     mcp.call_tool = timed_call_tool
-    # Re-register the wrapped handler with the underlying MCP server
-    mcp._mcp_server.call_tool(validate_input=False)(timed_call_tool)
 
 
 def main() -> None:
@@ -340,6 +351,7 @@ def main() -> None:
     # Run transport outside the initialization trace
     # This allows protocol requests to be separate traces
     logger.info(f"Running MCP server with transport: {cfg.transport}")
+    # Don't pass stateless_http to run() - it's set in constructor
     mcp.run(transport=cfg.transport)  # type: ignore[arg-type]
 
 
