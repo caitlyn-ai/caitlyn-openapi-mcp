@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "caitlyn-openapi-mcp"
-version = "1.0.1"
+version = "1.0.3"
 description = "MCP server that exposes OpenAPI specifications as queryable documentation resources for LLMs, with Scalar deep links and semantic search"
 readme = "README.md"
 requires-python = ">=3.11"

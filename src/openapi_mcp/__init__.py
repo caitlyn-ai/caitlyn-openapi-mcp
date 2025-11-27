@@ -10,7 +10,7 @@ from .model import Endpoint, OpenApiIndex
 from .openapi_loader import load_openapi_spec_from_url
 from .server import create_server, main
 
-__version__ = "1.0.1"
+__version__ = "1.0.3"
 
 __all__ = [
     "AppConfig",

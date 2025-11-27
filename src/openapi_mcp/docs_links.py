@@ -48,7 +48,7 @@ def _scalar_endpoint_link(base_url: str, ep: Endpoint, api_prefix: str | None = 
     Generate a Scalar deep link for an endpoint.
 
     Format: {base_url}#{api_prefix}/tag/{tag}/{methodLower}/{path}
-    Example: https://betty.getcaitlyn.ai/api/docs#caitlyn-api-v1/tag/chat/post/v1/bedrock/agent/{agentId}/{agentAliasId}/{sessionId}
+    Example: https://betty.getcaitlyn.ai/api/docs#caitlyn-api-v1/tag/chat/post/v1bedrockagentagentidagentaliasidsessionid
 
     Args:
         base_url: Base URL of the Scalar UI
@@ -60,13 +60,14 @@ def _scalar_endpoint_link(base_url: str, ep: Endpoint, api_prefix: str | None = 
     """
     tag = _slugify(ep.tags[0]) if ep.tags else "default"
     method_lower = ep.method.lower()
-    # keep / and {} and - as-is; encode other weirdness
-    encoded_path = quote(ep.path.lstrip("/"), safe="/{}-")
+    # Remove slashes, curly braces, dots, and other special characters from path
+    # Scalar expects the path to be concatenated without separators (but hyphens are preserved)
+    cleaned_path = re.sub(r"[^a-z0-9-]", "", ep.path.lower())
 
     if api_prefix:
-        return f"{base_url}#{api_prefix}/tag/{tag}/{method_lower}/{encoded_path}"
+        return f"{base_url}#{api_prefix}/tag/{tag}/{method_lower}/{cleaned_path}"
     else:
-        return f"{base_url}#tag/{tag}/{method_lower}/{encoded_path}"
+        return f"{base_url}#tag/{tag}/{method_lower}/{cleaned_path}"
 
 
 def _attach_scalar_links(index: OpenApiIndex, *, base_url: str) -> None:
